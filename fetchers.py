@@ -204,7 +204,8 @@ def _get_text(url: str, source: str) -> str:
         try:
             resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
             resp.raise_for_status()
-            return resp.text
+            # ic.tpex 回應標頭未宣告 charset,requests 會誤用 Latin-1;頁面實為 UTF-8
+            return resp.content.decode("utf-8", errors="replace")
         except Exception as e:  # noqa: BLE001 - 重試後統一包裝為 FetchError
             last = e
             if attempt < RETRIES - 1:
@@ -250,15 +251,19 @@ def parse_chain_page(page: str) -> set:
 def _crawl_chain_groups() -> pd.DataFrame:
     """爬全部產業鏈頁 → DataFrame[code, group];跨鏈同名族群加「鏈名-」前綴消歧。"""
     home = _get_text(IC_HOME, "產業分類")
-    chains = sorted(set(re.findall(r"ic=([A-Z][0-9]{3})", home)))
+    # 鏈代碼有英文字首(D000)與純數字(4100 太空衛星科技等前瞻科技類)兩種
+    chains = sorted(set(re.findall(r"ic=([A-Z0-9][0-9]{3})", home)))
     if not chains:
         raise FetchError("產業分類", ValueError("首頁無產業鏈代碼"))
-    by_group: dict = {}  # group -> {chain_name: set(codes)}
+    by_group: dict = {}      # group -> {chain_name: set(codes)}
+    chain_members: dict = {}  # chain_name -> set(codes)
     for ic in chains:
         page = _get_text(f"{IC_HOME}introduce.php?ic={ic}", f"產業分類({ic})")
         chain_name = parse_chain_name(page) or ic
-        for group, code in parse_chain_page(page):
+        pairs = parse_chain_page(page)
+        for group, code in pairs:
             by_group.setdefault(group, {}).setdefault(chain_name, set()).add(code)
+        chain_members.setdefault(chain_name, set()).update(c for _, c in pairs)
         time.sleep(0.5)  # 禮貌間隔
     rows = []
     for group, chains_map in by_group.items():
@@ -266,6 +271,9 @@ def _crawl_chain_groups() -> pd.DataFrame:
         for chain_name, codes in chains_map.items():
             name = f"{chain_name}-{group}" if ambiguous else group
             rows.extend({"code": c, "group": name} for c in codes)
+    # 鏈層級題材族群(「半導體」「太空衛星科技」整條鏈)
+    for chain_name, codes in chain_members.items():
+        rows.extend({"code": c, "group": chain_name} for c in codes)
     return pd.DataFrame(rows).drop_duplicates()
 
 

@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parent
 HISTORY_DIR = ROOT / "data/history"
 MOCK_HISTORY_DIR = ROOT / "data/mock_history"
 DATA_JS = ROOT / "web/data.js"
+CHAIN_CACHE = ROOT / "data/industry_chains.json"
 CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
+MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
 
 
 def load_history(history_dir: Path) -> list:
@@ -36,18 +38,27 @@ def prior_highs_from_history(history: list, window: int = 20) -> dict:
     return highs
 
 
-def build_stocks(twse, tpex, industry, inst) -> pd.DataFrame:
+def build_stocks(twse, tpex, capital, inst) -> pd.DataFrame:
     df = pd.concat([twse, tpex], ignore_index=True)
-    df = df.merge(industry, on="code", how="left").merge(inst, on="code", how="left")
+    df = df.merge(capital, on="code", how="left").merge(inst, on="code", how="left")
     df["inst_net_value"] = df["inst_net_shares"].fillna(0.0) * df["close"]
     df["market_cap"] = df["capital"].fillna(0.0) / 10.0 * df["close"]  # 面額10元近似
     return df
 
 
-def fetch_with_fallback(history: list):
+def fetch_with_fallback(history: list, refresh_industry: bool = False):
     """各來源獨立失敗處理:沿用最近快照之該部分,記入 stale 清單。"""
     stale = []
     last = history[-1] if history else None
+
+    try:
+        groups, chain_stale = fetchers.fetch_chain_groups(CHAIN_CACHE, force=refresh_industry)
+        if chain_stale:
+            stale.append("產業分類")
+    except fetchers.FetchError as e:
+        # 無快取又抓不到分類 → 無法分群,屬致命錯誤
+        print(f"產業分類取得失敗且無本地快取,無法執行:{e}")
+        sys.exit(1)
 
     try:
         twse = fetchers.fetch_twse_daily()
@@ -62,9 +73,9 @@ def fetch_with_fallback(history: list):
         tpex = pd.DataFrame(columns=["code", "name", "close", "high", "change_pct", "turnover"])
         stale.append(e.source)
     try:
-        industry = fetchers.fetch_industry_map()
+        capital = fetchers.fetch_capital_map()
     except fetchers.FetchError as e:
-        industry = pd.DataFrame(columns=["code", "industry", "capital"])
+        capital = pd.DataFrame(columns=["code", "capital"])
         stale.append(e.source)
     try:
         inst = fetchers.fetch_institutional()
@@ -80,7 +91,7 @@ def fetch_with_fallback(history: list):
                 if snap:
                     indices[sym] = pd.Series(snap["closes"], index=snap["dates"], dtype=float)
         stale.append("國際指數(" + ",".join(failed) + ")")
-    return twse, tpex, industry, inst, indices, stale
+    return twse, tpex, capital, inst, groups, indices, stale
 
 
 def render_indices(indices: dict) -> dict:
@@ -105,6 +116,8 @@ def render_indices(indices: dict) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true", help="使用 data/mock/ 樣本離線執行")
+    ap.add_argument("--refresh-industry", action="store_true",
+                    help="強制更新產業價值鏈分類快取")
     args = ap.parse_args()
     if args.mock:
         fetchers.set_mock(ROOT / "data/mock")
@@ -112,7 +125,8 @@ def main():
     history_dir = MOCK_HISTORY_DIR if args.mock else HISTORY_DIR
     history_dir.mkdir(parents=True, exist_ok=True)
     history = load_history(history_dir)
-    twse, tpex, industry, inst, indices, stale = fetch_with_fallback(history)
+    twse, tpex, capital, inst, groups, indices, stale = fetch_with_fallback(
+        history, refresh_industry=args.refresh_industry)
 
     # 休市判定:上市行情空 或 資料日期非今日(mock 模式以資料日期為今日)
     if twse is None or twse.empty:
@@ -125,14 +139,19 @@ def main():
         sys.exit(0)
     date_str = today.strftime("%Y-%m-%d")
 
-    stocks = build_stocks(twse, tpex, industry, inst)
+    stocks = build_stocks(twse, tpex, capital, inst)
     history = [h for h in history if h["date"] != date_str]  # 同日重跑覆蓋
     prior_highs = prior_highs_from_history(history)
-    sectors = scoring.aggregate_sectors(stocks, prior_highs)
 
     total_turnover = float(stocks["turnover"].sum())
     market_change = float((stocks["change_pct"].fillna(0) * stocks["turnover"]).sum()
                           / total_turnover) if total_turnover else 0.0
+
+    # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
+    member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")
+    sectors = scoring.aggregate_sectors(member_rows, prior_highs,
+                                        market_turnover=total_turnover)
+    sectors = sectors[sectors["member_count"] >= MIN_GROUP_SIZE]
 
     snapshot = {
         "date": date_str,
@@ -151,7 +170,8 @@ def main():
         past = [d["sectors"][ind_name]["score"] for d in history[-2:]
                 if ind_name in d["sectors"] and "score" in d["sectors"][ind_name]]
         arrow = scoring.score_arrow(past + [float(row["score"])])
-        sec_stocks = stocks[(stocks["industry"] == ind_name) & (stocks["inst_net_value"] > 0)]
+        sec_stocks = member_rows[(member_rows["industry"] == ind_name)
+                                 & (member_rows["inst_net_value"] > 0)]
         top5 = sec_stocks.nlargest(5, "inst_net_value")
         breakout.append({
             "industry": ind_name,
