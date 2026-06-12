@@ -90,3 +90,72 @@ def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
         return None
     tail = joined.tail(window)
     return round(float(tail.iloc[:, 0].corr(tail.iloc[:, 1])), 2)
+
+
+def _series(history: list, industry: str, field: str) -> list:
+    return [d["sectors"][industry][field] for d in history if industry in d["sectors"]]
+
+
+def _compound(changes: list) -> float:
+    """漲跌% 序列 → 區間累積報酬%。"""
+    r = 1.0
+    for c in changes:
+        r *= 1 + c / 100.0
+    return (r - 1) * 100
+
+
+def compute_breakout_scores(history: list) -> pd.DataFrame:
+    """突破口綜合評分(F3)。history: 每日快照(舊→新,今日為最後一筆)。
+
+    回傳 index=族群,columns=[vol_slope, high_delta, inst_strength,
+    inst_streak, ret20, rs_turn, score],score 介於 0–100。
+    """
+    today = history[-1]
+    rows = {}
+    for s in today["sectors"]:
+        share5 = _series(history[-5:], s, "turnover_share")
+        highs = _series(history, s, "new_high_count")
+        high_delta = highs[-1] - (highs[-4] if len(highs) >= 4 else highs[0])
+        inst3 = sum(_series(history[-3:], s, "inst_net_value"))
+        cap = today["sectors"][s].get("market_cap") or 0.0
+        streak = 0
+        for v in reversed(_series(history, s, "inst_net_value")):
+            if v > 0:
+                streak += 1
+            else:
+                break
+        ch = _series(history[-21:], s, "avg_change_pct")
+        mch = [d["market_change_pct"] for d in history[-21:]]
+        rs5_now = _compound(ch[-5:]) - _compound(mch[-5:])
+        rs5_prev = (_compound(ch[-6:-1]) - _compound(mch[-6:-1])) if len(ch) >= 6 else None
+        rows[s] = {
+            "vol_slope": slope(share5),
+            "high_delta": float(high_delta),
+            "inst_strength": inst3 / cap if cap > 0 else 0.0,
+            "inst_streak": float(streak),
+            "ret20": _compound(ch),
+            "rs_turn": 1.0 if (rs5_prev is not None and rs5_prev <= 0 < rs5_now) else 0.0,
+        }
+    df = pd.DataFrame.from_dict(rows, orient="index")
+    score = (
+        WEIGHTS["vol_slope"] * percentile_rank(df["vol_slope"])
+        + WEIGHTS["high_delta"] * percentile_rank(df["high_delta"])
+        + WEIGHTS["inst_strength"] * percentile_rank(df["inst_strength"])
+        + WEIGHTS["inst_streak"] * percentile_rank(df["inst_streak"])
+        + WEIGHTS["low_base"] * percentile_rank(-df["ret20"]) * (percentile_rank(df["ret20"]) <= 0.5)
+        + WEIGHTS["rs_turn"] * df["rs_turn"]
+    )
+    df["score"] = score.round(1)
+    return df.sort_values("score", ascending=False)
+
+
+def score_arrow(scores: list) -> str:
+    """近3日評分(舊→新,含今日)→ ↑(連升)/↓(連跌)/→;不足3日回「資料累積中」。"""
+    if len(scores) < 3:
+        return "資料累積中"
+    a, b, c = scores[-3:]
+    if a < b < c:
+        return "↑"
+    if a > b > c:
+        return "↓"
+    return "→"

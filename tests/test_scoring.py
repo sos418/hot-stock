@@ -61,3 +61,38 @@ def test_aggregate_sectors():
     assert semi["new_high_count"] == 1
     assert semi["inst_net_value"] == 400.0
     assert out.loc["金融保險", "turnover_share"] == pytest.approx(0.2)
+
+
+def _day(date, strong, weak):
+    return {"date": date, "market_change_pct": 0.0, "sectors": {"強": strong, "弱": weak}}
+
+
+def make_history():
+    """強: 量價籌碼全面領先、20日低基期、5日相對強度由負轉正 → 100分。
+    弱: 全面落後、漲幅在前50% → 0分。"""
+    strong_chg = [-5.0, -5.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    weak_chg = [1.0] * 7
+    hist = []
+    for i in range(7):
+        hist.append(_day(
+            f"2026-06-0{i + 1}",
+            {"turnover_share": 0.1 + 0.03 * i, "avg_change_pct": strong_chg[i],
+             "new_high_count": i, "inst_net_value": 100.0, "market_cap": 1000.0},
+            {"turnover_share": 0.3 - 0.03 * i, "avg_change_pct": weak_chg[i],
+             "new_high_count": 6 - i, "inst_net_value": -100.0, "market_cap": 1000.0},
+        ))
+    return hist
+
+
+def test_breakout_score_boundaries():
+    df = scoring.compute_breakout_scores(make_history())
+    assert df.loc["強", "score"] == 100.0
+    assert df.loc["弱", "score"] == 0.0
+
+
+def test_score_arrow():
+    assert scoring.score_arrow([10.0, 20.0]) == "資料累積中"
+    assert scoring.score_arrow([10.0, 20.0, 30.0]) == "↑"
+    assert scoring.score_arrow([30.0, 20.0, 10.0]) == "↓"
+    assert scoring.score_arrow([10.0, 30.0, 20.0]) == "→"
+    assert scoring.score_arrow([10.0, 10.0, 20.0]) == "→"  # 非連升不給↑
