@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""進入點:fetch → score → 寫每日快照 → 輸出 web/data.js。"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+import fetchers
+import scoring
+
+ROOT = Path(__file__).resolve().parent
+HISTORY_DIR = ROOT / "data/history"
+DATA_JS = ROOT / "web/data.js"
+CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
+
+
+def load_history() -> list:
+    files = sorted(HISTORY_DIR.glob("*.json"))
+    return [json.loads(f.read_text(encoding="utf-8")) for f in files]
+
+
+def prior_highs_from_history(history: list, window: int = 20) -> dict:
+    """過去至多 window 個交易日(不含今日)每檔收盤最高,供創新高判定。"""
+    highs: dict = {}
+    for day in history[-window:]:
+        for s in day.get("stocks", []):
+            c = s["code"]
+            highs[c] = max(highs.get(c, 0.0), s["close"])
+    return highs
+
+
+def build_stocks(twse, tpex, industry, inst) -> pd.DataFrame:
+    df = pd.concat([twse, tpex], ignore_index=True)
+    df = df.merge(industry, on="code", how="left").merge(inst, on="code", how="left")
+    df["inst_net_value"] = df["inst_net_shares"].fillna(0.0) * df["close"]
+    df["market_cap"] = df["capital"].fillna(0.0) / 10.0 * df["close"]  # 面額10元近似
+    return df
+
+
+def fetch_with_fallback(history: list):
+    """各來源獨立失敗處理:沿用最近快照之該部分,記入 stale 清單。"""
+    stale = []
+    last = history[-1] if history else None
+
+    try:
+        twse = fetchers.fetch_twse_daily()
+    except fetchers.FetchError as e:
+        twse = None
+        stale.append(e.source)
+    try:
+        tpex = fetchers.fetch_tpex_daily()
+        if tpex.empty:
+            raise fetchers.FetchError("上櫃行情", ValueError("empty"))
+    except fetchers.FetchError as e:
+        tpex = pd.DataFrame(columns=["code", "name", "close", "high", "change_pct", "turnover"])
+        stale.append(e.source)
+    try:
+        industry = fetchers.fetch_industry_map()
+    except fetchers.FetchError as e:
+        industry = pd.DataFrame(columns=["code", "industry", "capital"])
+        stale.append(e.source)
+    try:
+        inst = fetchers.fetch_institutional()
+    except fetchers.FetchError as e:
+        inst = pd.DataFrame(columns=["code", "inst_net_shares"])
+        stale.append(e.source)
+
+    indices, failed = fetchers.fetch_indices()
+    if failed:
+        if last:
+            for sym in failed:
+                snap = last.get("indices", {}).get(sym)
+                if snap:
+                    indices[sym] = pd.Series(snap["closes"], index=snap["dates"], dtype=float)
+        stale.append("國際指數(" + ",".join(failed) + ")")
+    return twse, tpex, industry, inst, indices, stale
+
+
+def render_indices(indices: dict) -> dict:
+    cards = []
+    for sym, name in fetchers.INDEX_SYMBOLS.items():
+        if sym not in indices:
+            cards.append({"symbol": sym, "name": name, "close": None,
+                          "change_pct": None, "d5_pct": None, "d20_pct": None})
+            continue
+        cards.append({"symbol": sym, "name": name, **scoring.index_stats(indices[sym])})
+
+    frame = pd.DataFrame({s: indices[s] for s in CHART_SYMBOLS if s in indices})
+    frame = frame.sort_index().ffill().dropna()
+    chart = {"labels": list(frame.index),
+             "series": {s: scoring.normalize_base100(frame[s]) for s in frame.columns}}
+    corr = None
+    if "^TWII" in indices and "^SOX" in indices:
+        corr = scoring.rolling_correlation(indices["^TWII"], indices["^SOX"], 20)
+    return {"cards": cards, "chart": chart, "corr_twii_sox": corr}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--mock", action="store_true", help="使用 data/mock/ 樣本離線執行")
+    args = ap.parse_args()
+    if args.mock:
+        fetchers.set_mock(ROOT / "data/mock")
+
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    history = load_history()
+    twse, tpex, industry, inst, indices, stale = fetch_with_fallback(history)
+
+    # 休市判定:上市行情空 或 資料日期非今日(mock 模式以資料日期為今日)
+    if twse is None or twse.empty:
+        print("今日休市/資料未更新(無上市行情資料)")
+        sys.exit(0)
+    data_date = twse.attrs.get("date")
+    today = data_date if (args.mock and data_date) else dt.date.today()
+    if data_date and data_date != today:
+        print(f"今日休市/資料未更新(資料日期 {data_date})")
+        sys.exit(0)
+    date_str = today.strftime("%Y-%m-%d")
+
+    stocks = build_stocks(twse, tpex, industry, inst)
+    history = [h for h in history if h["date"] != date_str]  # 同日重跑覆蓋
+    prior_highs = prior_highs_from_history(history)
+    sectors = scoring.aggregate_sectors(stocks, prior_highs)
+
+    total_turnover = float(stocks["turnover"].sum())
+    market_change = float((stocks["change_pct"].fillna(0) * stocks["turnover"]).sum()
+                          / total_turnover) if total_turnover else 0.0
+
+    snapshot = {
+        "date": date_str,
+        "market_change_pct": round(market_change, 4),
+        "stocks": [{"code": r.code, "close": r.close, "turnover": r.turnover}
+                   for r in stocks.itertuples() if pd.notna(r.close)],
+        "sectors": {idx: {k: (float(v) if pd.notna(v) else 0.0) for k, v in row.items()}
+                    for idx, row in sectors.iterrows()},
+        "indices": {sym: {"dates": list(s.index), "closes": [float(x) for x in s]}
+                    for sym, s in indices.items()},
+    }
+    scores = scoring.compute_breakout_scores(history + [snapshot])
+
+    breakout = []
+    for ind_name, row in scores.iterrows():
+        past = [d["sectors"][ind_name]["score"] for d in history[-2:]
+                if ind_name in d["sectors"] and "score" in d["sectors"][ind_name]]
+        arrow = scoring.score_arrow(past + [float(row["score"])])
+        sec_stocks = stocks[(stocks["industry"] == ind_name) & (stocks["inst_net_value"] > 0)]
+        top5 = sec_stocks.nlargest(5, "inst_net_value")
+        breakout.append({
+            "industry": ind_name,
+            "score": float(row["score"]),
+            "arrow": arrow,
+            "detail": {k: round(float(row[k]), 4) for k in
+                       ["vol_slope", "high_delta", "inst_strength", "inst_streak", "ret20", "rs_turn"]},
+            "top_inst_stocks": [{"code": r.code, "name": r.name,
+                                 "net_value": round(float(r.inst_net_value))}
+                                for r in top5.itertuples()],
+        })
+        snapshot["sectors"][ind_name]["score"] = float(row["score"])
+
+    (HISTORY_DIR / f"{date_str}.json").write_text(
+        json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+
+    hot = [{"industry": idx,
+            "avg_change_pct": round(float(r["avg_change_pct"]), 2),
+            "turnover_share": round(float(r["turnover_share"]), 4),
+            "limit_up_count": int(r["limit_up_count"]),
+            "new_high_count": int(r["new_high_count"])}
+           for idx, r in sectors.iterrows()]
+
+    payload = {
+        "date": date_str,
+        "generated_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "stale_sources": stale,
+        "indices": render_indices(indices),
+        "sectors_hot": hot,
+        "breakout": breakout,
+    }
+    DATA_JS.parent.mkdir(parents=True, exist_ok=True)
+    DATA_JS.write_text("window.DASHBOARD_DATA = "
+                       + json.dumps(payload, ensure_ascii=False) + ";\n", encoding="utf-8")
+    print(f"完成:{date_str},族群 {len(hot)} 個,快照與 web/data.js 已更新"
+          + (f";資料延遲:{','.join(stale)}" if stale else ""))
+
+
+if __name__ == "__main__":
+    main()
