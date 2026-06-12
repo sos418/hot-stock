@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import html as html_lib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -204,6 +206,44 @@ def fetch_institutional() -> pd.DataFrame:
     b = _inst_df(tpex_rows, ["SecuritiesCompanyCode", "Code", "代號"],
                  ["TotalDifference", "三大法人買賣超股數合計", "三大法人買賣超股數", "Total"])
     return pd.concat([a, b], ignore_index=True)
+
+
+CHAIN_SECTION_PAT = re.compile(r"(本國上市|本國上櫃|本國興櫃|外國|僑外)")
+
+
+def _clean_group_name(name: str) -> str:
+    name = html_lib.unescape(name).replace("\xa0", " ").strip()
+    return re.sub(r"[\(\(]\s*\d+\s*家\s*[\)\)]\s*$", "", name).strip()
+
+
+def parse_chain_name(page: str) -> str:
+    m = re.search(r"<title>[^<]*>\s*(.+?)產業鏈簡介", page)
+    return m.group(1).strip() if m else ""
+
+
+def parse_chain_page(page: str) -> set:
+    """單一產業鏈頁 → {(族群名, 股票代號)};主分類(companyList div)∪細分類(sc_company 表)。"""
+    pairs = set()
+    # 主分類:隱藏 companyList 區塊,title 屬性即族群名
+    for seg in re.split(r'<div id="companyList_[A-Z0-9]+" title="', page)[1:]:
+        title = _clean_group_name(seg.split('"', 1)[0])
+        if not title or CHAIN_SECTION_PAT.search(title):
+            continue
+        for code in re.findall(r"stk_code=([0-9A-Za-z]+)", seg.split("</div></div>", 1)[0]):
+            pairs.add((title, code))
+    # 細分類:sc_company 表格,標題取「前一表結尾~本表」視窗內最後一個非章節 <b>
+    # (頁內每表出現兩次:圖示區視窗內無標題會自動跳過,清單區才解析)
+    prev_end = 0
+    for m in re.finditer(r'<table id="sc_company_[A-Z0-9]+"[^>]*>(.*?)</table>', page, re.S):
+        window = page[prev_end:m.start()]
+        prev_end = m.end()
+        titles = [_clean_group_name(t) for t in re.findall(r"<b>([^<]+)</b>", window)]
+        titles = [t for t in titles if t and not CHAIN_SECTION_PAT.search(t)]
+        if not titles:
+            continue
+        for code in re.findall(r"stk_code=([0-9A-Za-z]+)", m.group(1)):
+            pairs.add((titles[-1], code))
+    return pairs
 
 
 def fetch_indices():
