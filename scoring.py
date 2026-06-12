@@ -52,6 +52,36 @@ def normalize_base100(closes: pd.Series) -> list:
     return [round(float(c) / float(closes.iloc[0]) * 100, 2) for c in closes]
 
 
+def aggregate_sectors(stocks: pd.DataFrame, prior_highs: dict) -> pd.DataFrame:
+    """個股 → 族群彙總(F2)。
+
+    stocks 欄位: code,name,industry,close,change_pct,turnover,inst_net_value,market_cap
+    prior_highs: 每檔過去(至多20日,不含今日)收盤最高;不在表內者不計新高。
+    """
+    df = stocks.dropna(subset=["industry", "close", "turnover"]).copy()
+    df["change_pct"] = df["change_pct"].fillna(0.0)
+    df["inst_net_value"] = df["inst_net_value"].fillna(0.0)
+    df["is_limit_up"] = df["change_pct"] >= LIMIT_UP_THRESHOLD
+    df["is_new_high"] = [
+        c in prior_highs and close > prior_highs[c]
+        for c, close in zip(df["code"], df["close"])
+    ]
+    df["w_change"] = df["change_pct"] * df["turnover"]
+    g = df.groupby("industry")
+    turnover = g["turnover"].sum()
+    out = pd.DataFrame({
+        "turnover": turnover,
+        "avg_change_pct": (g["w_change"].sum() / turnover.replace(0, np.nan)).fillna(0.0),
+        "limit_up_count": g["is_limit_up"].sum().astype(int),
+        "new_high_count": g["is_new_high"].sum().astype(int),
+        "inst_net_value": g["inst_net_value"].sum(),
+        "market_cap": g["market_cap"].sum(),
+    })
+    total = float(out["turnover"].sum())
+    out["turnover_share"] = out["turnover"] / total if total else 0.0
+    return out.sort_values("turnover", ascending=False)
+
+
 def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
     """兩收盤序列之日報酬 window 日相關係數;樣本不足回傳 None。"""
     ra, rb = a.pct_change(), b.pct_change()
