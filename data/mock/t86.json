@@ -1,0 +1,62 @@
+[
+ {
+  "Code": "2330",
+  "Name": "台積電",
+  "TotalDifference": "-3319000"
+ },
+ {
+  "Code": "2303",
+  "Name": "聯電",
+  "TotalDifference": "679000"
+ },
+ {
+  "Code": "3034",
+  "Name": "聯詠",
+  "TotalDifference": "-3425000"
+ },
+ {
+  "Code": "2317",
+  "Name": "鴻海",
+  "TotalDifference": "81000"
+ },
+ {
+  "Code": "2382",
+  "Name": "廣達",
+  "TotalDifference": "10394000"
+ },
+ {
+  "Code": "3231",
+  "Name": "緯創",
+  "TotalDifference": "9661000"
+ },
+ {
+  "Code": "2603",
+  "Name": "長榮",
+  "TotalDifference": "609000"
+ },
+ {
+  "Code": "2609",
+  "Name": "陽明",
+  "TotalDifference": "11155000"
+ },
+ {
+  "Code": "2615",
+  "Name": "萬海",
+  "TotalDifference": "6038000"
+ },
+ {
+  "Code": "2881",
+  "Name": "富邦金",
+  "TotalDifference": "11121000"
+ },
+ {
+  "Code": "2882",
+  "Name": "國泰金",
+  "TotalDifference": "5087000"
+ },
+ {
+  "Code": "2891",
+  "Name": "中信金",
+  "TotalDifference": "3861000"
+ }
+]

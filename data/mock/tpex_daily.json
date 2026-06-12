@@ -1,0 +1,38 @@
+[
+ {
+  "Date": "20260612",
+  "SecuritiesCompanyCode": "5483",
+  "CompanyName": "中美晶",
+  "Close": "172.17",
+  "Change": "6.32",
+  "High": "173.89",
+  "TransactionAmount": "2200000000"
+ },
+ {
+  "Date": "20260612",
+  "SecuritiesCompanyCode": "3105",
+  "CompanyName": "穩懋",
+  "Close": "163.17",
+  "Change": "-1.41",
+  "High": "164.8",
+  "TransactionAmount": "1100000000"
+ },
+ {
+  "Date": "20260612",
+  "SecuritiesCompanyCode": "5274",
+  "CompanyName": "信驊",
+  "Close": "248.29",
+  "Change": "7.03",
+  "High": "250.77",
+  "TransactionAmount": "2200000000"
+ },
+ {
+  "Date": "20260612",
+  "SecuritiesCompanyCode": "8069",
+  "CompanyName": "元太",
+  "Close": "198.04",
+  "Change": "8.72",
+  "High": "200.02",
+  "TransactionAmount": "7300000000"
+ }
+]

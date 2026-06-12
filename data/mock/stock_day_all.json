@@ -1,0 +1,110 @@
+[
+ {
+  "Date": "20260612",
+  "Code": "2330",
+  "Name": "台積電",
+  "ClosingPrice": "626.72",
+  "Change": "-5.01",
+  "HighestPrice": "632.99",
+  "TradeValue": "3000000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2303",
+  "Name": "聯電",
+  "ClosingPrice": "175.87",
+  "Change": "5.14",
+  "HighestPrice": "177.63",
+  "TradeValue": "7100000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "3034",
+  "Name": "聯詠",
+  "ClosingPrice": "133.23",
+  "Change": "-3.68",
+  "HighestPrice": "134.56",
+  "TradeValue": "2900000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2317",
+  "Name": "鴻海",
+  "ClosingPrice": "278.69",
+  "Change": "4.15",
+  "HighestPrice": "281.48",
+  "TradeValue": "7100000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2382",
+  "Name": "廣達",
+  "ClosingPrice": "452.31",
+  "Change": "-3.5",
+  "HighestPrice": "456.83",
+  "TradeValue": "200000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "3231",
+  "Name": "緯創",
+  "ClosingPrice": "748.32",
+  "Change": "2.85",
+  "HighestPrice": "755.8",
+  "TradeValue": "3700000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2603",
+  "Name": "長榮",
+  "ClosingPrice": "212.42",
+  "Change": "-0.65",
+  "HighestPrice": "214.54",
+  "TradeValue": "1300000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2609",
+  "Name": "陽明",
+  "ClosingPrice": "409.56",
+  "Change": "-1.02",
+  "HighestPrice": "413.66",
+  "TradeValue": "3500000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2615",
+  "Name": "萬海",
+  "ClosingPrice": "853.42",
+  "Change": "11.01",
+  "HighestPrice": "861.95",
+  "TradeValue": "5000000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2881",
+  "Name": "富邦金",
+  "ClosingPrice": "123.38",
+  "Change": "2.5",
+  "HighestPrice": "124.61",
+  "TradeValue": "4800000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2882",
+  "Name": "國泰金",
+  "ClosingPrice": "623.38",
+  "Change": "-16.42",
+  "HighestPrice": "629.61",
+  "TradeValue": "3100000000"
+ },
+ {
+  "Date": "20260612",
+  "Code": "2891",
+  "Name": "中信金",
+  "ClosingPrice": "845.66",
+  "Change": "32.49",
+  "HighestPrice": "854.12",
+  "TradeValue": "1400000000"
+ }
+]
