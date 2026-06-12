@@ -46,10 +46,20 @@ mock 模式的快照寫入 `data/mock_history/`,不會污染真實的 `data/hist
 |---|---|
 | 國際指數近60日 | yfinance |
 | 上市個股日成交 | TWSE rwd `afterTrading/STOCK_DAY_ALL` |
-| 上市產業別 | TWSE OpenAPI `opendata/t187ap03_L` |
-| 上櫃產業別 | TPEx OpenAPI `mopsfin_t187ap03_O` |
+| **族群分類(產業價值鏈)** | ic.tpex.org.tw(證交所/櫃買官方),爬 44 條產業鏈頁 |
+| 實收資本額(估市值) | TWSE OpenAPI `opendata/t187ap03_L`、TPEx `mopsfin_t187ap03_O` |
 | 上櫃個股日成交 | TPEx OpenAPI `tpex_mainboard_daily_close_quotes` |
 | 三大法人買賣超 | TWSE rwd `fund/T86`、TPEx OpenAPI `tpex_3insti_daily_trading` |
+
+### 族群分類說明
+
+- 採官方「產業價值鏈資訊平台」三層聯集:**產業鏈**(半導體、太空衛星科技…44條)
+  ∪ **主分類**(IC封裝測試、被動元件…)∪ **細分類**(記憶體IC、光通訊設備…),
+  共 400+ 族群;跨鏈同名族群加「鏈名-」前綴消歧。
+- **一檔可屬多個族群**,故成交占比分母為全市場成交金額,各族群占比加總 >100% 屬正常。
+- 當日有成交成員 <3 檔的族群不進熱度榜/評分(`MIN_GROUP_SIZE`)。
+- 分類快取於 `data/industry_chains.json`,7 天自動更新;
+  `python run.py --refresh-industry` 可強制更新;更新失敗沿用舊快取並標示「資料延遲:產業分類」。
 
 > 為何上市行情用 rwd 而非 OpenAPI:`openapi.twse.com.tw` 的行情/法人鏡像
 > 約「隔日清晨 05:20」才更新,當日盤後執行會誤判為「資料未更新」;

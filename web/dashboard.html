@@ -65,6 +65,7 @@ canvas { max-width: 100%; }
   </div>
 
   <h2>當下熱門族群 Top 10</h2>
+  <div class="meta" style="margin-bottom:8px">族群=產業價值鏈分類(個股可屬多個族群);成交占比分母為全市場成交金額。</div>
   <table id="hot-table">
     <thead><tr>
       <th>族群</th><th>平均漲跌%</th><th>成交占比</th><th>漲停家數</th><th>創20日新高</th>
@@ -165,13 +166,14 @@ canvas { max-width: 100%; }
       "<td>" + s.limit_up_count + "</td><td>" + s.new_high_count + "</td></tr>").join("");
 
   /* ---- F2 全族群成交占比橫條圖 ---- */
+  const shareTop = D.sectors_hot.slice(0, 20);
   new Chart(document.getElementById("share-chart"), {
     type: "bar",
     data: {
-      labels: D.sectors_hot.map(s => s.industry),
+      labels: shareTop.map(s => s.industry),
       datasets: [{
-        label: "成交金額占比%",
-        data: D.sectors_hot.map(s => +(s.turnover_share * 100).toFixed(2)),
+        label: "成交金額占比% (Top 20)",
+        data: shareTop.map(s => +(s.turnover_share * 100).toFixed(2)),
         backgroundColor: "#4d9fec",
       }],
     },
