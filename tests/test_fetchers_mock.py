@@ -20,12 +20,20 @@ def test_mock_daily_quotes():
     assert twse.attrs["date"] is not None
 
 
-def test_mock_industry_and_institutional():
-    ind = fetchers.fetch_industry_map()
-    assert len(ind) == 16
-    assert "半導體業" in set(ind["industry"])
+def test_mock_capital_and_institutional():
+    cap = fetchers.fetch_capital_map()
+    assert len(cap) == 16
+    assert {"code", "capital"} <= set(cap.columns)
+    assert (cap["capital"] > 0).all()
     inst = fetchers.fetch_institutional()
     assert len(inst) == 16
+
+
+def test_mock_chain_groups():
+    df, stale = fetchers.fetch_chain_groups(Path("/tmp/nonexistent_cache.json"))
+    assert stale is False
+    assert {"code", "group"} <= set(df.columns)
+    assert (df["group"] == "晶圓製造").sum() >= 3
 
 
 def test_mock_indices():

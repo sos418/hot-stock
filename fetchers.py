@@ -27,17 +27,6 @@ INDEX_SYMBOLS = {
     "^N225": "日經225", "^KS11": "韓國KOSPI", "000001.SS": "上證指數", "^HSI": "恒生指數",
 }
 
-INDUSTRY_NAMES = {
-    "01": "水泥工業", "02": "食品工業", "03": "塑膠工業", "04": "紡織纖維", "05": "電機機械",
-    "06": "電器電纜", "07": "化學工業", "08": "玻璃陶瓷", "09": "造紙工業", "10": "鋼鐵工業",
-    "11": "橡膠工業", "12": "汽車工業", "14": "建材營造", "15": "航運業", "16": "觀光餐旅",
-    "17": "金融保險", "18": "貿易百貨", "19": "綜合", "20": "其他", "21": "化學工業",
-    "22": "生技醫療業", "23": "油電燃氣業", "24": "半導體業", "25": "電腦及週邊設備業",
-    "26": "光電業", "27": "通信網路業", "28": "電子零組件業", "29": "電子通路業",
-    "30": "資訊服務業", "31": "其他電子業", "32": "文化創意業", "33": "農業科技業",
-    "34": "電子商務", "35": "綠能環保", "36": "數位雲端", "37": "運動休閒", "38": "居家生活",
-}
-
 MOCK_DIR: Path | None = None
 
 
@@ -162,22 +151,18 @@ def fetch_tpex_daily() -> pd.DataFrame:
                      ["High", "最高"], ["Date", "日期"])
 
 
-def fetch_industry_map() -> pd.DataFrame:
-    """上市 t187ap03_L + 上櫃 t187ap03_O → code, industry, capital(實收資本額)。"""
+def fetch_capital_map() -> pd.DataFrame:
+    """上市 t187ap03_L + 上櫃 t187ap03_O → code, capital(實收資本額,估市值用)。"""
     rows = []
-    rows += _load(f"{TWSE}/opendata/t187ap03_L", "上市產業別", "t187ap03_L.json")
-    rows += _load(f"{TPEX}/mopsfin_t187ap03_O", "上櫃產業別", "t187ap03_O.json")
+    rows += _load(f"{TWSE}/opendata/t187ap03_L", "上市基本資料", "t187ap03_L.json")
+    rows += _load(f"{TPEX}/mopsfin_t187ap03_O", "上櫃基本資料", "t187ap03_O.json")
     out = []
     for r in rows:
         code = str(_pick(r, "公司代號", "Code") or "").strip()
-        ind = str(_pick(r, "產業別", "SecuritiesIndustryCode") or "").strip()
-        if not code or not ind:
+        if not code:
             continue
-        out.append({
-            "code": code,
-            "industry": INDUSTRY_NAMES.get(ind.zfill(2), f"其他({ind})"),
-            "capital": _num(_pick(r, "實收資本額", "Capital")) or 0.0,
-        })
+        out.append({"code": code,
+                    "capital": _num(_pick(r, "實收資本額", "Capital")) or 0.0})
     return pd.DataFrame(out).drop_duplicates("code")
 
 
@@ -208,7 +193,23 @@ def fetch_institutional() -> pd.DataFrame:
     return pd.concat([a, b], ignore_index=True)
 
 
+IC_HOME = "https://ic.tpex.org.tw/"
+CHAIN_CACHE_DAYS = 7
 CHAIN_SECTION_PAT = re.compile(r"(本國上市|本國上櫃|本國興櫃|外國|僑外)")
+
+
+def _get_text(url: str, source: str) -> str:
+    last = None
+    for attempt in range(RETRIES):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:  # noqa: BLE001 - 重試後統一包裝為 FetchError
+            last = e
+            if attempt < RETRIES - 1:
+                time.sleep(RETRY_WAIT)
+    raise FetchError(source, last)
 
 
 def _clean_group_name(name: str) -> str:
@@ -244,6 +245,52 @@ def parse_chain_page(page: str) -> set:
         for code in re.findall(r"stk_code=([0-9A-Za-z]+)", m.group(1)):
             pairs.add((titles[-1], code))
     return pairs
+
+
+def _crawl_chain_groups() -> pd.DataFrame:
+    """爬全部產業鏈頁 → DataFrame[code, group];跨鏈同名族群加「鏈名-」前綴消歧。"""
+    home = _get_text(IC_HOME, "產業分類")
+    chains = sorted(set(re.findall(r"ic=([A-Z][0-9]{3})", home)))
+    if not chains:
+        raise FetchError("產業分類", ValueError("首頁無產業鏈代碼"))
+    by_group: dict = {}  # group -> {chain_name: set(codes)}
+    for ic in chains:
+        page = _get_text(f"{IC_HOME}introduce.php?ic={ic}", f"產業分類({ic})")
+        chain_name = parse_chain_name(page) or ic
+        for group, code in parse_chain_page(page):
+            by_group.setdefault(group, {}).setdefault(chain_name, set()).add(code)
+        time.sleep(0.5)  # 禮貌間隔
+    rows = []
+    for group, chains_map in by_group.items():
+        ambiguous = len(chains_map) > 1
+        for chain_name, codes in chains_map.items():
+            name = f"{chain_name}-{group}" if ambiguous else group
+            rows.extend({"code": c, "group": name} for c in codes)
+    return pd.DataFrame(rows).drop_duplicates()
+
+
+def fetch_chain_groups(cache_path: Path, force: bool = False):
+    """回傳 (DataFrame[code, group], stale)。快取 7 天;重抓失敗沿用舊快取(stale=True)。"""
+    if MOCK_DIR:
+        raw = json.loads((MOCK_DIR / "industry_chains.json").read_text(encoding="utf-8"))
+        return pd.DataFrame(raw["groups"]), False
+    cached = None
+    if cache_path.exists():
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        age = (dt.date.today() - dt.date.fromisoformat(cached["fetched_at"])).days
+        if not force and age < CHAIN_CACHE_DAYS:
+            return pd.DataFrame(cached["groups"]), False
+    try:
+        df = _crawl_chain_groups()
+    except FetchError:
+        if cached:
+            return pd.DataFrame(cached["groups"]), True
+        raise
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(
+        {"fetched_at": dt.date.today().isoformat(),
+         "groups": df.to_dict("records")}, ensure_ascii=False), encoding="utf-8")
+    return df, False
 
 
 def fetch_indices():
