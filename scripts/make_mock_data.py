@@ -31,10 +31,15 @@ def quote(code, name, base):
     return code, name, close, change, random.randint(2, 80) * 10**8
 
 
-w("stock_day_all.json", [
-    {"Date": DATE8, "Code": c, "Name": n, "ClosingPrice": str(cl), "Change": str(ch),
-     "HighestPrice": str(round(cl * 1.01, 2)), "TradeValue": str(tv)}
-    for c, n, cl, ch, tv in (quote(c, n, random.uniform(50, 1000)) for c, n, _ in TWSE_STOCKS)])
+# TWSE rwd 回應格式(www.twse.com.tw/rwd/...):{stat, date, fields, data}
+w("stock_day_all.json", {
+    "stat": "OK", "date": DATE8,
+    "fields": ["證券代號", "證券名稱", "成交股數", "成交金額", "開盤價",
+               "最高價", "最低價", "收盤價", "漲跌價差", "成交筆數"],
+    "data": [[c, n, "1,000,000", f"{tv:,}", str(cl), str(round(cl * 1.01, 2)),
+              str(round(cl * 0.97, 2)), str(cl), ("+" if ch >= 0 else "") + str(ch), "5,000"]
+             for c, n, cl, ch, tv in
+             (quote(c, n, random.uniform(50, 1000)) for c, n, _ in TWSE_STOCKS)]})
 
 w("tpex_daily.json", [
     {"Date": DATE8, "SecuritiesCompanyCode": c, "CompanyName": n, "Close": str(cl),
@@ -48,8 +53,10 @@ w("t187ap03_O.json", [
     {"公司代號": c, "公司簡稱": n, "產業別": ind, "實收資本額": str(random.randint(20, 300) * 10**8)}
     for c, n, ind in TPEX_STOCKS])
 
-w("t86.json", [{"Code": c, "Name": n, "TotalDifference": str(random.randint(-8000, 12000) * 1000)}
-               for c, n, _ in TWSE_STOCKS])
+w("t86.json", {
+    "stat": "OK", "date": DATE8,
+    "fields": ["證券代號", "證券名稱", "三大法人買賣超股數"],
+    "data": [[c, n, f"{random.randint(-8000, 12000) * 1000:,}"] for c, n, _ in TWSE_STOCKS]})
 w("tpex_inst.json", [{"SecuritiesCompanyCode": c, "CompanyName": n,
                       "TotalDifference": str(random.randint(-3000, 5000) * 1000)}
                      for c, n, _ in TPEX_STOCKS])

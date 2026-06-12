@@ -111,6 +111,10 @@ def compute_breakout_scores(history: list) -> pd.DataFrame:
     inst_streak, ret20, rs_turn, score],score 介於 0–100。
     """
     today = history[-1]
+    columns = ["vol_slope", "high_delta", "inst_strength", "inst_streak",
+               "ret20", "rs_turn", "score"]
+    if not today["sectors"]:
+        return pd.DataFrame(columns=columns)
     rows = {}
     for s in today["sectors"]:
         share5 = _series(history[-5:], s, "turnover_share")

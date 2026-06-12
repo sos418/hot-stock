@@ -96,3 +96,10 @@ def test_score_arrow():
     assert scoring.score_arrow([30.0, 20.0, 10.0]) == "↓"
     assert scoring.score_arrow([10.0, 30.0, 20.0]) == "→"
     assert scoring.score_arrow([10.0, 10.0, 20.0]) == "→"  # 非連升不給↑
+
+
+def test_breakout_scores_empty_sectors():
+    """族群為空(如產業別來源失敗)時應回傳空結果而非拋例外。"""
+    df = scoring.compute_breakout_scores([{"date": "2026-06-12", "market_change_pct": 0.0, "sectors": {}}])
+    assert df.empty
+    assert "score" in df.columns

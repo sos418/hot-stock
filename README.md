@@ -37,15 +37,24 @@ open web/dashboard.html
 .venv/bin/pytest tests/ -v                   # scoring 單元測試 + mock smoke
 ```
 
+mock 模式的快照寫入 `data/mock_history/`,不會污染真實的 `data/history/`;
+但 `web/data.js` 會被覆寫,之後重跑一次 `run.py` 即恢復真實資料。
+
 ## 資料來源(免費、免金鑰)
 
 | 用途 | 來源 |
 |---|---|
 | 國際指數近60日 | yfinance |
-| 上市個股日成交 | TWSE OpenAPI `exchangeReport/STOCK_DAY_ALL` |
-| 上市/上櫃產業別 | TWSE OpenAPI `opendata/t187ap03_L` / `t187ap03_O` |
+| 上市個股日成交 | TWSE rwd `afterTrading/STOCK_DAY_ALL` |
+| 上市產業別 | TWSE OpenAPI `opendata/t187ap03_L` |
+| 上櫃產業別 | TPEx OpenAPI `mopsfin_t187ap03_O` |
 | 上櫃個股日成交 | TPEx OpenAPI `tpex_mainboard_daily_close_quotes` |
-| 三大法人買賣超 | TWSE `fund/T86`、TPEx 對應端點 |
+| 三大法人買賣超 | TWSE rwd `fund/T86`、TPEx OpenAPI `tpex_3insti_daily_trading` |
+
+> 為何上市行情用 rwd 而非 OpenAPI:`openapi.twse.com.tw` 的行情/法人鏡像
+> 約「隔日清晨 05:20」才更新,當日盤後執行會誤判為「資料未更新」;
+> 官網 rwd 端點當天盤後即有(行情約 15:00、T86 約 16:30 後)。
+> 建議 16:30 之後執行,法人資料才完整(否則頁面標示「資料延遲:三大法人(上市)」)。
 
 ## 評分邏輯摘要(F3)
 

@@ -5,3 +5,4 @@ __pycache__/
 data/history/
 web/data.js
 .pytest_cache/
+data/mock_history/

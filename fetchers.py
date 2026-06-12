@@ -15,6 +15,9 @@ TIMEOUT = 30
 HEADERS = {"User-Agent": "Mozilla/5.0 twstock-dashboard"}
 
 TWSE = "https://openapi.twse.com.tw/v1"
+# 注意:openapi.twse.com.tw 的行情/法人鏡像「隔日清晨」才更新,
+# 盤後當日資料須改用官網 rwd 端點(約 15:00–16:30 後可得)。
+TWSE_RWD = "https://www.twse.com.tw/rwd/zh"
 TPEX = "https://www.tpex.org.tw/openapi/v1"
 
 INDEX_SYMBOLS = {
@@ -124,9 +127,25 @@ def _daily_df(rows, code_keys, name_keys, close_keys, change_keys, value_keys, h
     return df
 
 
+def _rwd_rows(payload) -> list:
+    """TWSE rwd 回應 {stat, date, fields, data} → list[dict];休市/查無資料回空。"""
+    if not isinstance(payload, dict) or payload.get("stat") != "OK":
+        return []
+    fields = payload.get("fields", [])
+    date = payload.get("date")
+    rows = []
+    for arr in payload.get("data", []):
+        r = dict(zip(fields, arr))
+        r.setdefault("日期", date)
+        rows.append(r)
+    return rows
+
+
 def fetch_twse_daily() -> pd.DataFrame:
     """上市個股日成交。回傳 code,name,close,high,change_pct,turnover;attrs['date']=資料日期。"""
-    rows = _load(f"{TWSE}/exchangeReport/STOCK_DAY_ALL", "上市行情", "stock_day_all.json")
+    payload = _load(f"{TWSE_RWD}/afterTrading/STOCK_DAY_ALL?response=json",
+                    "上市行情", "stock_day_all.json")
+    rows = _rwd_rows(payload)
     return _daily_df(rows, ["Code", "證券代號"], ["Name", "證券名稱"],
                      ["ClosingPrice", "收盤價"], ["Change", "漲跌價差"],
                      ["TradeValue", "成交金額"], ["HighestPrice", "最高價"], ["Date", "日期"])
@@ -145,7 +164,7 @@ def fetch_industry_map() -> pd.DataFrame:
     """上市 t187ap03_L + 上櫃 t187ap03_O → code, industry, capital(實收資本額)。"""
     rows = []
     rows += _load(f"{TWSE}/opendata/t187ap03_L", "上市產業別", "t187ap03_L.json")
-    rows += _load(f"{TWSE}/opendata/t187ap03_O", "上櫃產業別", "t187ap03_O.json")
+    rows += _load(f"{TPEX}/mopsfin_t187ap03_O", "上櫃產業別", "t187ap03_O.json")
     out = []
     for r in rows:
         code = str(_pick(r, "公司代號", "Code") or "").strip()
@@ -172,7 +191,13 @@ def _inst_df(rows, code_keys, net_keys):
 
 def fetch_institutional() -> pd.DataFrame:
     """三大法人個股買賣超股數(上市 T86 + 上櫃)→ code, inst_net_shares。"""
-    twse_rows = _load(f"{TWSE}/fund/T86", "三大法人(上市)", "t86.json")
+    date8 = dt.date.today().strftime("%Y%m%d")
+    payload = _load(f"{TWSE_RWD}/fund/T86?response=json&date={date8}&selectType=ALL",
+                    "三大法人(上市)", "t86.json")
+    twse_rows = _rwd_rows(payload)
+    if not twse_rows:
+        # T86 約 16:30 後發布;尚未發布或休市時視為來源暫缺,交由上層 fallback
+        raise FetchError("三大法人(上市)", ValueError("T86 無當日資料"))
     tpex_rows = _load(f"{TPEX}/tpex_3insti_daily_trading", "三大法人(上櫃)", "tpex_inst.json")
     a = _inst_df(twse_rows, ["Code", "證券代號"],
                  ["TotalDifference", "三大法人買賣超股數", "Total"])

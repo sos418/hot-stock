@@ -14,13 +14,15 @@ import fetchers
 import scoring
 
 ROOT = Path(__file__).resolve().parent
+# mock 模式使用獨立歷史目錄,避免覆蓋真實快照
 HISTORY_DIR = ROOT / "data/history"
+MOCK_HISTORY_DIR = ROOT / "data/mock_history"
 DATA_JS = ROOT / "web/data.js"
 CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 
 
-def load_history() -> list:
-    files = sorted(HISTORY_DIR.glob("*.json"))
+def load_history(history_dir: Path) -> list:
+    files = sorted(history_dir.glob("*.json"))
     return [json.loads(f.read_text(encoding="utf-8")) for f in files]
 
 
@@ -107,8 +109,9 @@ def main():
     if args.mock:
         fetchers.set_mock(ROOT / "data/mock")
 
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    history = load_history()
+    history_dir = MOCK_HISTORY_DIR if args.mock else HISTORY_DIR
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history = load_history(history_dir)
     twse, tpex, industry, inst, indices, stale = fetch_with_fallback(history)
 
     # 休市判定:上市行情空 或 資料日期非今日(mock 模式以資料日期為今日)
@@ -162,7 +165,7 @@ def main():
         })
         snapshot["sectors"][ind_name]["score"] = float(row["score"])
 
-    (HISTORY_DIR / f"{date_str}.json").write_text(
+    (history_dir / f"{date_str}.json").write_text(
         json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
 
     hot = [{"industry": idx,
