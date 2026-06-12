@@ -52,11 +52,14 @@ def normalize_base100(closes: pd.Series) -> list:
     return [round(float(c) / float(closes.iloc[0]) * 100, 2) for c in closes]
 
 
-def aggregate_sectors(stocks: pd.DataFrame, prior_highs: dict) -> pd.DataFrame:
+def aggregate_sectors(stocks: pd.DataFrame, prior_highs: dict,
+                      market_turnover: float | None = None) -> pd.DataFrame:
     """個股 → 族群彙總(F2)。
 
     stocks 欄位: code,name,industry,close,change_pct,turnover,inst_net_value,market_cap
+    (一檔多族群時,以多列(個股,族群)輸入)
     prior_highs: 每檔過去(至多20日,不含今日)收盤最高;不在表內者不計新高。
+    market_turnover: 成交占比分母(全市場成交金額);未提供時退回族群加總。
     """
     df = stocks.dropna(subset=["industry", "close", "turnover"]).copy()
     df["change_pct"] = df["change_pct"].fillna(0.0)
@@ -76,8 +79,9 @@ def aggregate_sectors(stocks: pd.DataFrame, prior_highs: dict) -> pd.DataFrame:
         "new_high_count": g["is_new_high"].sum().astype(int),
         "inst_net_value": g["inst_net_value"].sum(),
         "market_cap": g["market_cap"].sum(),
+        "member_count": g["code"].nunique().astype(int),
     })
-    total = float(out["turnover"].sum())
+    total = float(market_turnover) if market_turnover else float(out["turnover"].sum())
     out["turnover_share"] = out["turnover"] / total if total else 0.0
     return out.sort_values("turnover", ascending=False)
 

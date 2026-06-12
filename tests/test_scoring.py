@@ -103,3 +103,15 @@ def test_breakout_scores_empty_sectors():
     df = scoring.compute_breakout_scores([{"date": "2026-06-12", "market_change_pct": 0.0, "sectors": {}}])
     assert df.empty
     assert "score" in df.columns
+
+
+def test_aggregate_sectors_market_denominator_and_member_count():
+    rows = []
+    for code, grp, turnover in [("A", "G1", 600.0), ("B", "G1", 200.0),
+                                ("A", "G2", 600.0), ("C", "G2", 200.0)]:
+        rows.append({"code": code, "name": code, "industry": grp, "close": 10.0,
+                     "change_pct": 1.0, "turnover": turnover,
+                     "inst_net_value": 0.0, "market_cap": 100.0})
+    out = scoring.aggregate_sectors(pd.DataFrame(rows), {}, market_turnover=1000.0)
+    assert out.loc["G1", "turnover_share"] == pytest.approx(0.8)  # 分母=全市場
+    assert out.loc["G1", "member_count"] == 2
