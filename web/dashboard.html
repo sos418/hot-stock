@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台股分析儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #11151c; --card: #1a212c; --line: #2a3342;
+  --text: #e8eaed; --muted: #9aa3b2; --accent: #4d9fec;
+  --up: #e54d42; --down: #2e9e5b; /* 台股慣例:紅漲綠跌 */
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+  background: var(--bg); color: var(--text);
+  max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px;
+}
+h1 { font-size: 22px; }
+h2 { font-size: 17px; margin: 32px 0 12px; border-left: 4px solid var(--accent); padding-left: 10px; }
+.meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.badge {
+  display: inline-block; background: #c9a227; color: #1a1a1a; font-weight: 600;
+  border-radius: 4px; padding: 2px 8px; font-size: 12px; margin: 6px 6px 0 0;
+}
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.card .name { font-size: 13px; color: var(--muted); }
+.card .close { font-size: 20px; font-weight: 700; margin: 4px 0; }
+.card .rows { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-top: 12px; }
+.toggles { margin-bottom: 10px; font-size: 14px; }
+.toggles label { margin-right: 16px; cursor: pointer; user-select: none; }
+table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 14px; }
+th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+th { background: #202938; color: var(--muted); font-weight: 600; font-size: 13px; }
+th:first-child, td:first-child { text-align: left; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: #222b3a; }
+tr.detail-row td { background: #161c26; text-align: left; font-size: 13px; color: var(--muted); }
+.detail-grid { display: flex; gap: 28px; flex-wrap: wrap; padding: 4px 0; }
+.score { font-weight: 700; }
+.arrow-up { color: var(--up); font-weight: 700; }
+.arrow-down { color: var(--down); font-weight: 700; }
+.pending { color: var(--muted); font-size: 12px; }
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+canvas { max-width: 100%; }
+</style>
+</head>
+<body>
+<h1>台股分析儀表板</h1>
+<div class="meta" id="meta"></div>
+<div id="stale"></div>
+
+<div id="content">
+  <h2>國際大盤</h2>
+  <div class="cards" id="index-cards"></div>
+  <div class="panel">
+    <div class="toggles" id="series-toggles"></div>
+    <canvas id="index-chart" height="90"></canvas>
+    <div class="meta" id="corr"></div>
+  </div>
+
+  <h2>當下熱門族群 Top 10</h2>
+  <table id="hot-table">
+    <thead><tr>
+      <th>族群</th><th>平均漲跌%</th><th>成交占比</th><th>漲停家數</th><th>創20日新高</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="panel">
+    <canvas id="share-chart"></canvas>
+  </div>
+
+  <h2>突破口綜合評分(0–100)</h2>
+  <div class="meta" style="margin-bottom:8px">點擊列展開明細;↑ 需近3日連升才視為有效訊號。</div>
+  <table id="score-table">
+    <thead><tr>
+      <th>族群</th><th>評分</th><th>近3日</th><th>法人3日強度</th><th>連買天數</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  const D = window.DASHBOARD_DATA;
+  if (!D) {
+    document.getElementById("content").innerHTML =
+      '<div class="empty">尚無資料,請先執行 python run.py</div>';
+    return;
+  }
+  const NAMES = { "^TWII": "台股加權", "^SOX": "費城半導體", "^GSPC": "S&P 500" };
+  const COLORS = { "^TWII": "#e54d42", "^SOX": "#4d9fec", "^GSPC": "#c9a227" };
+
+  function fmtPct(v) {
+    if (v === null || v === undefined) return "—";
+    return (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+  }
+  function cls(v) { return v > 0 ? "up" : v < 0 ? "down" : ""; }
+
+  document.getElementById("meta").textContent =
+    "資料日期 " + D.date + "|產生於 " + D.generated_at;
+  document.getElementById("stale").innerHTML = (D.stale_sources || [])
+    .map(s => '<span class="badge">資料延遲:' + s + "</span>").join("");
+
+  /* ---- F1 指數卡片 ---- */
+  document.getElementById("index-cards").innerHTML = D.indices.cards.map(c => {
+    if (c.close === null) {
+      return '<div class="card"><div class="name">' + c.name +
+             '</div><div class="close">—</div><div class="rows">無資料</div></div>';
+    }
+    return '<div class="card"><div class="name">' + c.name + " " + c.symbol + "</div>" +
+      '<div class="close ' + cls(c.change_pct) + '">' + c.close.toLocaleString() + "</div>" +
+      '<div class="rows">' +
+      '<span class="' + cls(c.change_pct) + '">日 ' + fmtPct(c.change_pct) + "</span>" +
+      '<span class="' + cls(c.d5_pct) + '">5日 ' + fmtPct(c.d5_pct) + "</span>" +
+      '<span class="' + cls(c.d20_pct) + '">20日 ' + fmtPct(c.d20_pct) + "</span>" +
+      "</div></div>";
+  }).join("");
+
+  /* ---- F1 折線圖(基期=100,可勾選) ---- */
+  const chart = new Chart(document.getElementById("index-chart"), {
+    type: "line",
+    data: {
+      labels: D.indices.chart.labels,
+      datasets: Object.entries(D.indices.chart.series).map(([sym, vals]) => ({
+        label: NAMES[sym] || sym, data: vals, borderColor: COLORS[sym] || "#888",
+        borderWidth: 1.6, pointRadius: 0, tension: 0.2, _sym: sym,
+      })),
+    },
+    options: {
+      animation: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#9aa3b2", maxTicksLimit: 10 }, grid: { color: "#222b3a" } },
+        y: { ticks: { color: "#9aa3b2" }, grid: { color: "#222b3a" } },
+      },
+    },
+  });
+  document.getElementById("series-toggles").innerHTML =
+    chart.data.datasets.map((ds, i) =>
+      '<label style="color:' + ds.borderColor + '">' +
+      '<input type="checkbox" checked data-i="' + i + '"> ' + ds.label + "</label>").join("");
+  document.getElementById("series-toggles").addEventListener("change", e => {
+    const i = +e.target.dataset.i;
+    chart.setDatasetVisibility(i, e.target.checked);
+    chart.update();
+  });
+  document.getElementById("corr").textContent =
+    D.indices.corr_twii_sox === null
+      ? "台股–費半 20日相關係數:樣本不足"
+      : "台股–費半 20日相關係數:" + D.indices.corr_twii_sox.toFixed(2);
+
+  /* ---- F2 熱度榜 Top 10 ---- */
+  document.querySelector("#hot-table tbody").innerHTML =
+    D.sectors_hot.slice(0, 10).map(s =>
+      "<tr><td>" + s.industry + "</td>" +
+      '<td class="' + cls(s.avg_change_pct) + '">' + fmtPct(s.avg_change_pct) + "</td>" +
+      "<td>" + (s.turnover_share * 100).toFixed(2) + "%</td>" +
+      "<td>" + s.limit_up_count + "</td><td>" + s.new_high_count + "</td></tr>").join("");
+
+  /* ---- F2 全族群成交占比橫條圖 ---- */
+  new Chart(document.getElementById("share-chart"), {
+    type: "bar",
+    data: {
+      labels: D.sectors_hot.map(s => s.industry),
+      datasets: [{
+        label: "成交金額占比%",
+        data: D.sectors_hot.map(s => +(s.turnover_share * 100).toFixed(2)),
+        backgroundColor: "#4d9fec",
+      }],
+    },
+    options: {
+      indexAxis: "y", animation: false,
+      plugins: { legend: { labels: { color: "#9aa3b2" } } },
+      scales: {
+        x: { ticks: { color: "#9aa3b2" }, grid: { color: "#222b3a" } },
+        y: { ticks: { color: "#e8eaed", autoSkip: false }, grid: { display: false } },
+      },
+    },
+  });
+
+  /* ---- F3 評分表(點擊展開明細) ---- */
+  const DETAIL_LABELS = {
+    vol_slope: "占比5日斜率", high_delta: "新高家數3日變化", inst_strength: "法人3日強度",
+    inst_streak: "法人連買天數", ret20: "20日漲幅%", rs_turn: "相對強度轉正",
+  };
+  function arrowHtml(a) {
+    if (a === "↑") return '<span class="arrow-up">↑</span>';
+    if (a === "↓") return '<span class="arrow-down">↓</span>';
+    if (a === "→") return "→";
+    return '<span class="pending">' + a + "</span>";
+  }
+  document.querySelector("#score-table tbody").innerHTML = D.breakout.map((b, i) =>
+    '<tr class="clickable" data-i="' + i + '"><td>' + b.industry + "</td>" +
+    '<td class="score">' + b.score.toFixed(1) + "</td>" +
+    "<td>" + arrowHtml(b.arrow) + "</td>" +
+    "<td>" + (b.detail.inst_strength * 100).toFixed(3) + "%</td>" +
+    "<td>" + b.detail.inst_streak.toFixed(0) + "</td></tr>" +
+    '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="5">' +
+    '<div class="detail-grid">' +
+    Object.entries(DETAIL_LABELS).map(([k, label]) =>
+      "<span>" + label + ":<b>" +
+      (k === "rs_turn" ? (b.detail[k] ? "是" : "否")
+        : k === "inst_strength" ? (b.detail[k] * 100).toFixed(3) + "%"
+        : b.detail[k].toFixed(k === "ret20" ? 2 : 4)) + "</b></span>").join("") +
+    "</div><div style=\"margin-top:6px\">法人買超前5名:" +
+    (b.top_inst_stocks.length
+      ? b.top_inst_stocks.map(t => t.code + " " + t.name + "(" +
+          (t.net_value / 1e8).toFixed(2) + "億)").join("、")
+      : "無買超個股") +
+    "</div></td></tr>").join("");
+  document.querySelector("#score-table tbody").addEventListener("click", e => {
+    const tr = e.target.closest("tr.clickable");
+    if (!tr) return;
+    const d = document.querySelector('tr.detail-row[data-d="' + tr.dataset.i + '"]');
+    d.hidden = !d.hidden;
+  });
+})();
+</script>
+</body>
+</html>
