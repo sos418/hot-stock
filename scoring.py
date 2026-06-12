@@ -29,3 +29,34 @@ def slope(values) -> float:
         return 0.0
     x = np.arange(len(vals), dtype=float)
     return float(np.polyfit(x, np.array(vals, dtype=float), 1)[0])
+
+
+def index_stats(closes: pd.Series) -> dict:
+    """近N日收盤序列(舊→新)→ 收盤/漲跌%/5日%/20日%。資料不足的欄位為 None。"""
+    closes = closes.dropna()
+
+    def pct(n: int):
+        if len(closes) <= n:
+            return None
+        return round((closes.iloc[-1] / closes.iloc[-1 - n] - 1) * 100, 2)
+
+    return {"close": round(float(closes.iloc[-1]), 2),
+            "change_pct": pct(1), "d5_pct": pct(5), "d20_pct": pct(20)}
+
+
+def normalize_base100(closes: pd.Series) -> list:
+    """標準化走勢,基期=100。"""
+    closes = closes.dropna()
+    if closes.empty:
+        return []
+    return [round(float(c) / float(closes.iloc[0]) * 100, 2) for c in closes]
+
+
+def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
+    """兩收盤序列之日報酬 window 日相關係數;樣本不足回傳 None。"""
+    ra, rb = a.pct_change(), b.pct_change()
+    joined = pd.concat([ra, rb], axis=1, join="inner").dropna()
+    if len(joined) < window:
+        return None
+    tail = joined.tail(window)
+    return round(float(tail.iloc[:, 0].corr(tail.iloc[:, 1])), 2)
