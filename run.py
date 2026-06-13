@@ -23,12 +23,7 @@ CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
 MAX_TOP_SHARE = 0.60  # 龍頭個股成交額占族群比重高於此值視為單股獨大,不進榜(非族群輪動)
 
-# 題材鏈(前瞻/應用):用來替個股標記主題,供「題材聚焦」(如 AI、衛星)
-THEME_CHAINS = {
-    "人工智慧", "太空衛星科技", "區塊鏈", "金融科技", "雲端運算", "資通訊安全", "大數據",
-    "體驗科技", "運動科技", "自動化", "太陽能產業", "LED照明產業", "電動車輛產業",
-    "電子商務", "再生醫療",
-}
+# 題材 = 所有「鏈層級」族群(官方 44 條產業鏈全納入),供「題材聚焦」(如 AI、衛星)
 
 
 def load_history(history_dir: Path) -> list:
@@ -159,8 +154,8 @@ def main():
     level_map = dict(zip(groups["group"], groups["level"]))
     LEVEL_LABEL = {"chain": "鏈", "main": "主分類", "sub": "細分類"}
 
-    # 個股 → 所屬題材鏈(AI/衛星…),供「題材聚焦」標籤
-    theme_rows = groups[(groups["level"] == "chain") & (groups["group"].isin(THEME_CHAINS))]
+    # 個股 → 所屬題材鏈(全部 44 條鏈),供「題材聚焦」標籤
+    theme_rows = groups[groups["level"] == "chain"]
     code_themes = theme_rows.groupby("code")["group"].apply(list).to_dict()
 
     # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
