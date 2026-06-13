@@ -32,10 +32,8 @@ def test_mock_capital_and_institutional():
 def test_mock_chain_groups():
     df, stale = fetchers.fetch_chain_groups(Path("/tmp/nonexistent_cache.json"))
     assert stale is False
-    assert {"code", "group", "level"} <= set(df.columns)
+    assert {"code", "group"} <= set(df.columns)
     assert (df["group"] == "晶圓製造").sum() >= 3
-    assert df.loc[df["group"] == "晶圓製造", "level"].iloc[0] == "sub"
-    assert df.loc[df["group"] == "半導體", "level"].iloc[0] == "chain"
 
 
 def test_mock_indices():

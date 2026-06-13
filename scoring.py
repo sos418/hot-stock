@@ -75,24 +75,26 @@ def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
     return round(float(tail.iloc[:, 0].corr(tail.iloc[:, 1])), 2)
 
 
-def strong_stock_sectors(member_rows: pd.DataFrame,
+def strong_stock_sectors(member_rows: pd.DataFrame, key="industry",
                          threshold: float = STRONG_THRESHOLD,
                          min_count: int = 2) -> pd.DataFrame:
     """今日強勢族群(F3):統計當日漲幅 > threshold 的強勢股落在哪些族群。
 
-    member_rows: (個股, 族群) 多對多列,需含 industry, code, change_pct。
+    member_rows: (個股, 族群) 多對多列,需含 change_pct, code 及分組鍵。
+    key: 分組欄(預設 "industry";層級顯示時可傳 "chain" 或 ["chain","industry"])。
     回傳 index=族群, columns=[strong_count, member_count, strong_ratio],
     依強勢股家數(其次比例)排序;強勢股家數 < min_count 不入榜。
     """
-    df = member_rows.dropna(subset=["industry", "change_pct"]).copy()
+    cols = ["strong_count", "member_count", "strong_ratio"]
+    df = member_rows.dropna(subset=["change_pct"]).copy()
     if df.empty:
-        return pd.DataFrame(columns=["strong_count", "member_count", "strong_ratio"])
+        return pd.DataFrame(columns=cols)
     df["is_strong"] = df["change_pct"] > threshold
-    g = df.groupby("industry")
+    g = df.groupby(key)
     out = pd.DataFrame({
         "strong_count": g["is_strong"].sum().astype(int),
         "member_count": g["code"].nunique().astype(int),
     })
-    out["strong_ratio"] = out["strong_count"] / out["member_count"].replace(0, np.nan)
+    out["strong_ratio"] = (out["strong_count"] / out["member_count"].replace(0, np.nan)).fillna(0.0)
     out = out[out["strong_count"] >= min_count]
     return out.sort_values(["strong_count", "strong_ratio"], ascending=False)

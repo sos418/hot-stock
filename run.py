@@ -23,8 +23,6 @@ CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
 MAX_TOP_SHARE = 0.60  # 龍頭個股成交額占族群比重高於此值視為單股獨大,不進榜(非族群輪動)
 
-# 題材 = 所有「鏈層級」族群(官方 44 條產業鏈全納入),供「題材聚焦」(如 AI、衛星)
-
 
 def load_history(history_dir: Path) -> list:
     files = sorted(history_dir.glob("*.json"))
@@ -116,6 +114,50 @@ def render_indices(indices: dict) -> dict:
     return {"cards": cards, "chart": chart, "corr_twii_sox": corr}
 
 
+def build_strong_tree(member_rows: pd.DataFrame) -> list:
+    """F3 今日強勢族群:以產業鏈為大傘,底下掛熱門子族群(層級顯示)。
+
+    member_rows: (個股, 族群) 列,含 industry(族群名), chain(所屬產業鏈), code, name, change_pct。
+    鏈層級大傘 industry == chain;子群 industry != chain。
+    """
+    df = member_rows.dropna(subset=["industry", "change_pct"]).copy()
+
+    def strong_list(frame):
+        hits = frame[frame["change_pct"] > scoring.STRONG_THRESHOLD].drop_duplicates(
+            "code").sort_values("change_pct", ascending=False)
+        return [{"code": r.code, "name": r.name, "change_pct": round(float(r.change_pct), 2)}
+                for r in hits.itertuples()]
+
+    umb = df[df["industry"] == df["chain"]]
+    chains = scoring.strong_stock_sectors(umb, key="chain")
+    chains = chains[chains["member_count"] >= MIN_GROUP_SIZE]
+
+    subs = df[df["industry"] != df["chain"]]
+    sub_stats = scoring.strong_stock_sectors(subs, key=["chain", "industry"])
+    kids_by_chain: dict = {}
+    for (ch, sub_name), srow in sub_stats.iterrows():
+        kids_by_chain.setdefault(ch, []).append({
+            "industry": sub_name,
+            "strong_count": int(srow["strong_count"]),
+            "member_count": int(srow["member_count"]),
+            "strong_ratio": round(float(srow["strong_ratio"]), 4),
+            "strong_stocks": strong_list(subs[(subs["chain"] == ch)
+                                              & (subs["industry"] == sub_name)]),
+        })
+
+    tree = []
+    for chain_name, row in chains.iterrows():
+        tree.append({
+            "industry": chain_name,
+            "strong_count": int(row["strong_count"]),
+            "member_count": int(row["member_count"]),
+            "strong_ratio": round(float(row["strong_ratio"]), 4),
+            "strong_stocks": strong_list(umb[umb["chain"] == chain_name]),
+            "children": kids_by_chain.get(chain_name, []),
+        })
+    return tree
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true", help="使用 data/mock/ 樣本離線執行")
@@ -150,14 +192,6 @@ def main():
     market_change = float((stocks["change_pct"].fillna(0) * stocks["turnover"]).sum()
                           / total_turnover) if total_turnover else 0.0
 
-    # 族群層級對照(鏈/主分類/細分類),供前端標記與篩選
-    level_map = dict(zip(groups["group"], groups["level"]))
-    LEVEL_LABEL = {"chain": "鏈", "main": "主分類", "sub": "細分類"}
-
-    # 個股 → 所屬題材鏈(全部 44 條鏈),供「題材聚焦」標籤
-    theme_rows = groups[groups["level"] == "chain"]
-    code_themes = theme_rows.groupby("code")["group"].apply(list).to_dict()
-
     # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
     member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")
     sectors = scoring.aggregate_sectors(member_rows, prior_highs,
@@ -175,32 +209,13 @@ def main():
         "indices": {sym: {"dates": list(s.index), "closes": [float(x) for x in s]}
                     for sym, s in indices.items()},
     }
-    # F3 今日強勢族群:當日漲幅 >8% 的個股做族群分類,依家數排序(家數≥2 且族群≥MIN_GROUP_SIZE)
-    strong = scoring.strong_stock_sectors(member_rows)
-    strong = strong[strong["member_count"] >= MIN_GROUP_SIZE]
-
-    breakout = []
-    for ind_name, row in strong.iterrows():
-        hits = member_rows[(member_rows["industry"] == ind_name)
-                           & (member_rows["change_pct"] > scoring.STRONG_THRESHOLD)]
-        hits = hits.sort_values("change_pct", ascending=False)
-        breakout.append({
-            "industry": ind_name,
-            "level": LEVEL_LABEL.get(level_map.get(ind_name), ""),
-            "strong_count": int(row["strong_count"]),
-            "member_count": int(row["member_count"]),
-            "strong_ratio": round(float(row["strong_ratio"]), 4),
-            "strong_stocks": [{"code": r.code, "name": r.name,
-                               "change_pct": round(float(r.change_pct), 2),
-                               "themes": code_themes.get(r.code, [])}
-                              for r in hits.itertuples()],
-        })
+    # F3 今日強勢族群:當日漲幅 >8% 的個股做族群分類,以產業鏈為大傘、底下掛熱門子族群
+    breakout = build_strong_tree(member_rows)
 
     (history_dir / f"{date_str}.json").write_text(
         json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
 
     hot = [{"industry": idx,
-            "level": LEVEL_LABEL.get(level_map.get(idx), ""),
             "avg_change_pct": round(float(r["avg_change_pct"]), 2),
             "turnover_share": round(float(r["turnover_share"]), 4),
             "limit_up_count": int(r["limit_up_count"]),

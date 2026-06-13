@@ -224,18 +224,15 @@ def parse_chain_name(page: str) -> str:
 
 
 def parse_chain_page(page: str) -> set:
-    """單一產業鏈頁 → {(level, 族群名, 股票代號)}。
-
-    level: "main"(主分類,companyList div)/ "sub"(細分類,sc_company 表)。
-    """
-    triples = set()
+    """單一產業鏈頁 → {(族群名, 股票代號)};主分類(companyList div)∪細分類(sc_company 表)。"""
+    pairs = set()
     # 主分類:隱藏 companyList 區塊,title 屬性即族群名
     for seg in re.split(r'<div id="companyList_[A-Z0-9]+" title="', page)[1:]:
         title = _clean_group_name(seg.split('"', 1)[0])
         if not title or CHAIN_SECTION_PAT.search(title):
             continue
         for code in re.findall(r"stk_code=([0-9A-Za-z]+)", seg.split("</div></div>", 1)[0]):
-            triples.add(("main", title, code))
+            pairs.add((title, code))
     # 細分類:sc_company 表格,標題取「前一表結尾~本表」視窗內最後一個非章節 <b>
     # (頁內每表出現兩次:圖示區視窗內無標題會自動跳過,清單區才解析)
     prev_end = 0
@@ -247,63 +244,55 @@ def parse_chain_page(page: str) -> set:
         if not titles:
             continue
         for code in re.findall(r"stk_code=([0-9A-Za-z]+)", m.group(1)):
-            triples.add(("sub", titles[-1], code))
-    return triples
-
-
-LEVEL_RANK = {"sub": 0, "main": 1, "chain": 2}  # 數字小=越細;同名取最細層級
+            pairs.add((titles[-1], code))
+    return pairs
 
 
 def _crawl_chain_groups() -> pd.DataFrame:
-    """爬全部產業鏈頁 → DataFrame[code, group, level];跨鏈同名族群加「鏈名-」前綴消歧。
+    """爬全部產業鏈頁 → DataFrame[code, group, chain]。
 
-    level: chain(整條鏈)/ main(主分類)/ sub(細分類)。
+    每檔個股對每個所屬族群一列;chain=所屬產業鏈(層級顯示用,大傘)。
+    鏈層級族群(整條鏈)其 group == chain。跨鏈同名子族群加「鏈名-」前綴消歧。
     """
     home = _get_text(IC_HOME, "產業分類")
     # 鏈代碼有英文字首(D000)與純數字(4100 太空衛星科技等前瞻科技類)兩種
     chains = sorted(set(re.findall(r"ic=([A-Z0-9][0-9]{3})", home)))
     if not chains:
         raise FetchError("產業分類", ValueError("首頁無產業鏈代碼"))
-    by_group: dict = {}       # group -> {chain_name: {"level":lvl, "codes":set}}
+    by_group: dict = {}      # group -> {chain_name: set(codes)}
     chain_members: dict = {}  # chain_name -> set(codes)
     for ic in chains:
         page = _get_text(f"{IC_HOME}introduce.php?ic={ic}", f"產業分類({ic})")
         chain_name = parse_chain_name(page) or ic
-        for level, group, code in parse_chain_page(page):
-            slot = by_group.setdefault(group, {}).setdefault(
-                chain_name, {"level": level, "codes": set()})
-            slot["codes"].add(code)
-            if LEVEL_RANK[level] < LEVEL_RANK[slot["level"]]:
-                slot["level"] = level  # 同鏈同名出現於多層時取最細
-            chain_members.setdefault(chain_name, set()).add(code)
+        pairs = parse_chain_page(page)
+        for group, code in pairs:
+            by_group.setdefault(group, {}).setdefault(chain_name, set()).add(code)
+        chain_members.setdefault(chain_name, set()).update(c for _, c in pairs)
         time.sleep(0.5)  # 禮貌間隔
     rows = []
     for group, chains_map in by_group.items():
         ambiguous = len(chains_map) > 1
-        for chain_name, info in chains_map.items():
+        for chain_name, codes in chains_map.items():
             name = f"{chain_name}-{group}" if ambiguous else group
-            rows.extend({"code": c, "group": name, "level": info["level"]}
-                        for c in info["codes"])
-    # 鏈層級題材族群(「半導體」「太空衛星科技」整條鏈)
+            rows.extend({"code": c, "group": name, "chain": chain_name} for c in codes)
+    # 鏈層級題材族群(整條鏈,如「半導體」「被動元件」):group == chain
     for chain_name, codes in chain_members.items():
-        rows.extend({"code": c, "group": chain_name, "level": "chain"} for c in codes)
-    df = pd.DataFrame(rows)
-    # 同 (code, group) 若橫跨多層,保留最細層級
-    df["_lr"] = df["level"].map(LEVEL_RANK)
-    return (df.sort_values("_lr").drop_duplicates(["code", "group"])
-            .drop(columns="_lr").reset_index(drop=True))
+        rows.extend({"code": c, "group": chain_name, "chain": chain_name} for c in codes)
+    return pd.DataFrame(rows).drop_duplicates()
 
 
 def fetch_chain_groups(cache_path: Path, force: bool = False):
-    """回傳 (DataFrame[code, group], stale)。快取 7 天;重抓失敗沿用舊快取(stale=True)。"""
+    """回傳 (DataFrame[code, group, chain], stale)。快取 7 天;重抓失敗沿用舊快取(stale=True)。"""
     if MOCK_DIR:
         raw = json.loads((MOCK_DIR / "industry_chains.json").read_text(encoding="utf-8"))
         return pd.DataFrame(raw["groups"]), False
     cached = None
     if cache_path.exists():
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        # 舊版快取無 chain 欄(層級顯示用)→ 視為過期強制重抓
+        has_chain = cached["groups"] and "chain" in cached["groups"][0]
         age = (dt.date.today() - dt.date.fromisoformat(cached["fetched_at"])).days
-        if not force and age < CHAIN_CACHE_DAYS:
+        if not force and has_chain and age < CHAIN_CACHE_DAYS:
             return pd.DataFrame(cached["groups"]), False
     try:
         df = _crawl_chain_groups()

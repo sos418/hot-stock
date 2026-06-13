@@ -3,143 +3,118 @@
  "groups": [
   {
    "code": "2330",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "2303",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "3034",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "5483",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "3105",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "5274",
-   "group": "半導體",
-   "level": "chain"
-  },
-  {
-   "code": "2317",
-   "group": "人工智慧",
-   "level": "chain"
-  },
-  {
-   "code": "2382",
-   "group": "人工智慧",
-   "level": "chain"
-  },
-  {
-   "code": "3231",
-   "group": "人工智慧",
-   "level": "chain"
-  },
-  {
-   "code": "3034",
-   "group": "人工智慧",
-   "level": "chain"
-  },
-  {
-   "code": "2330",
    "group": "晶圓製造",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "2303",
    "group": "晶圓製造",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "5483",
    "group": "晶圓製造",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "3105",
    "group": "晶圓製造",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "3034",
    "group": "記憶體IC",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "5274",
    "group": "記憶體IC",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
    "code": "8069",
    "group": "記憶體IC",
-   "level": "sub"
+   "chain": "半導體"
   },
   {
-   "code": "2317",
-   "group": "AI伺服器",
-   "level": "main"
+   "code": "5483",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "8069",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "2303",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "3105",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "5274",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "3034",
+   "group": "半導體",
+   "chain": "半導體"
+  },
+  {
+   "code": "2330",
+   "group": "半導體",
+   "chain": "半導體"
   },
   {
    "code": "2382",
    "group": "AI伺服器",
-   "level": "main"
+   "chain": "AI伺服器"
   },
   {
    "code": "3231",
    "group": "AI伺服器",
-   "level": "main"
+   "chain": "AI伺服器"
   },
   {
-   "code": "2603",
-   "group": "貨櫃航運",
-   "level": "main"
+   "code": "2317",
+   "group": "AI伺服器",
+   "chain": "AI伺服器"
   },
   {
    "code": "2609",
    "group": "貨櫃航運",
-   "level": "main"
+   "chain": "貨櫃航運"
   },
   {
    "code": "2615",
    "group": "貨櫃航運",
-   "level": "main"
+   "chain": "貨櫃航運"
   },
   {
-   "code": "2881",
-   "group": "金控",
-   "level": "chain"
-  },
-  {
-   "code": "2882",
-   "group": "金控",
-   "level": "chain"
+   "code": "2603",
+   "group": "貨櫃航運",
+   "chain": "貨櫃航運"
   },
   {
    "code": "2891",
    "group": "金控",
-   "level": "chain"
+   "chain": "金控"
   },
   {
-   "code": "2330",
-   "group": "迷你族群",
-   "level": "sub"
+   "code": "2881",
+   "group": "金控",
+   "chain": "金控"
   },
   {
-   "code": "2317",
-   "group": "迷你族群",
-   "level": "sub"
+   "code": "2882",
+   "group": "金控",
+   "chain": "金控"
   }
  ]
 }
