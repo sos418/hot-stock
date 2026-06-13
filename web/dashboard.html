@@ -81,8 +81,8 @@ canvas { max-width: 100%; }
   <table id="score-table">
     <thead><tr>
       <th>產業鏈</th>
-      <th class="sortable" data-key="strong_count">強勢股家數 ▾</th>
-      <th class="sortable" data-key="strong_ratio">強勢比例</th>
+      <th class="sortable" data-key="strong_count">強勢股家數</th>
+      <th class="sortable" data-key="strong_ratio">強勢比例 ▾</th>
       <th class="sortable" data-key="member_count">族群家數</th>
     </tr></thead>
     <tbody></tbody>
@@ -201,7 +201,8 @@ canvas { max-width: 100%; }
       return;
     }
     const rows = D.breakout.slice().sort((a, b) =>
-      (desc ? b[key] - a[key] : a[key] - b[key]) || b.strong_ratio - a.strong_ratio);
+      (desc ? b[key] - a[key] : a[key] - b[key])
+      || (b.strong_count - a.strong_count) || (b.strong_ratio - a.strong_ratio));
     scoreBody.innerHTML = rows.map((b, i) => {
       const kids = (b.children || []).length
         ? '<div style="margin-bottom:6px">熱門子族群:' + b.children.map(k =>
@@ -220,7 +221,7 @@ canvas { max-width: 100%; }
     }).join("");
   }
 
-  let sortKey = "strong_count", sortDesc = true;
+  let sortKey = "strong_ratio", sortDesc = true;  // 預設依強勢比例(整鏈在噴者優先)
   renderStrong(sortKey, sortDesc);
 
   scoreBody.addEventListener("click", e => {
