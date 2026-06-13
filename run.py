@@ -165,27 +165,24 @@ def main():
         "indices": {sym: {"dates": list(s.index), "closes": [float(x) for x in s]}
                     for sym, s in indices.items()},
     }
-    scores = scoring.compute_breakout_scores(history + [snapshot])
+    # F3 今日強勢族群:當日漲幅 >8% 的個股做族群分類,依家數排序(家數≥2 且族群≥MIN_GROUP_SIZE)
+    strong = scoring.strong_stock_sectors(member_rows)
+    strong = strong[strong["member_count"] >= MIN_GROUP_SIZE]
 
     breakout = []
-    for ind_name, row in scores.iterrows():
-        past = [d["sectors"][ind_name]["score"] for d in history[-2:]
-                if ind_name in d["sectors"] and "score" in d["sectors"][ind_name]]
-        arrow = scoring.score_arrow(past + [float(row["score"])])
-        sec_stocks = member_rows[(member_rows["industry"] == ind_name)
-                                 & (member_rows["inst_net_value"] > 0)]
-        top5 = sec_stocks.nlargest(5, "inst_net_value")
+    for ind_name, row in strong.iterrows():
+        hits = member_rows[(member_rows["industry"] == ind_name)
+                           & (member_rows["change_pct"] > scoring.STRONG_THRESHOLD)]
+        hits = hits.sort_values("change_pct", ascending=False)
         breakout.append({
             "industry": ind_name,
-            "score": float(row["score"]),
-            "arrow": arrow,
-            "detail": {k: round(float(row[k]), 4) for k in
-                       ["vol_slope", "high_delta", "inst_strength", "inst_streak", "ret20", "rs_turn"]},
-            "top_inst_stocks": [{"code": r.code, "name": r.name,
-                                 "net_value": round(float(r.inst_net_value))}
-                                for r in top5.itertuples()],
+            "strong_count": int(row["strong_count"]),
+            "member_count": int(row["member_count"]),
+            "strong_ratio": round(float(row["strong_ratio"]), 4),
+            "strong_stocks": [{"code": r.code, "name": r.name,
+                               "change_pct": round(float(r.change_pct), 2)}
+                              for r in hits.itertuples()],
         })
-        snapshot["sectors"][ind_name]["score"] = float(row["score"])
 
     (history_dir / f"{date_str}.json").write_text(
         json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")

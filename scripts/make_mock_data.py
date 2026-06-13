@@ -25,9 +25,14 @@ def w(name, obj):
     (MOCK / name).write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# 強勢股(漲幅>8%):讓 --mock 能展示 F3 今日強勢族群
+STRONG_CODES = {"2330", "2303", "2317", "2382"}  # 晶圓製造×2、AI伺服器×2
+
+
 def quote(code, name, base):
     close = round(base * random.uniform(0.95, 1.08), 2)
-    change = round(close * random.uniform(-0.03, 0.05), 2)
+    pct = random.uniform(0.085, 0.095) if code in STRONG_CODES else random.uniform(-0.03, 0.05)
+    change = round(close * pct, 2)  # change/prev ≈ pct/(1-pct);0.085→約 +9.3%
     return code, name, close, change, random.randint(2, 80) * 10**8
 
 

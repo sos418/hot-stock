@@ -5,30 +5,7 @@ import numpy as np
 import pandas as pd
 
 LIMIT_UP_THRESHOLD = 9.8  # 台股漲停 10%,留浮點容差
-
-WEIGHTS = {
-    "vol_slope": 20.0, "high_delta": 20.0,
-    "inst_strength": 15.0, "inst_streak": 15.0,
-    "low_base": 15.0, "rs_turn": 15.0,
-}
-
-
-def percentile_rank(values: pd.Series) -> pd.Series:
-    """全族群分位數正規化至 [0,1];元素少於 2 時回傳 0.5。"""
-    n = len(values)
-    if n <= 1:
-        return pd.Series(0.5, index=values.index)
-    r = values.rank(method="average")
-    return (r - 1) / (n - 1)
-
-
-def slope(values) -> float:
-    """最小平方法斜率;少於 2 點回傳 0。"""
-    vals = [v for v in values if v is not None and not pd.isna(v)]
-    if len(vals) < 2:
-        return 0.0
-    x = np.arange(len(vals), dtype=float)
-    return float(np.polyfit(x, np.array(vals, dtype=float), 1)[0])
+STRONG_THRESHOLD = 8.0    # 當日漲幅 > 此值視為強勢股(漲停10%,>8%=準漲停)
 
 
 def index_stats(closes: pd.Series) -> dict:
@@ -98,74 +75,24 @@ def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
     return round(float(tail.iloc[:, 0].corr(tail.iloc[:, 1])), 2)
 
 
-def _series(history: list, industry: str, field: str) -> list:
-    return [d["sectors"][industry][field] for d in history if industry in d["sectors"]]
+def strong_stock_sectors(member_rows: pd.DataFrame,
+                         threshold: float = STRONG_THRESHOLD,
+                         min_count: int = 2) -> pd.DataFrame:
+    """今日強勢族群(F3):統計當日漲幅 > threshold 的強勢股落在哪些族群。
 
-
-def _compound(changes: list) -> float:
-    """漲跌% 序列 → 區間累積報酬%。"""
-    r = 1.0
-    for c in changes:
-        r *= 1 + c / 100.0
-    return (r - 1) * 100
-
-
-def compute_breakout_scores(history: list) -> pd.DataFrame:
-    """突破口綜合評分(F3)。history: 每日快照(舊→新,今日為最後一筆)。
-
-    回傳 index=族群,columns=[vol_slope, high_delta, inst_strength,
-    inst_streak, ret20, rs_turn, score],score 介於 0–100。
+    member_rows: (個股, 族群) 多對多列,需含 industry, code, change_pct。
+    回傳 index=族群, columns=[strong_count, member_count, strong_ratio],
+    依強勢股家數(其次比例)排序;強勢股家數 < min_count 不入榜。
     """
-    today = history[-1]
-    columns = ["vol_slope", "high_delta", "inst_strength", "inst_streak",
-               "ret20", "rs_turn", "score"]
-    if not today["sectors"]:
-        return pd.DataFrame(columns=columns)
-    rows = {}
-    for s in today["sectors"]:
-        share5 = _series(history[-5:], s, "turnover_share")
-        highs = _series(history, s, "new_high_count")
-        high_delta = highs[-1] - (highs[-4] if len(highs) >= 4 else highs[0])
-        inst3 = sum(_series(history[-3:], s, "inst_net_value"))
-        cap = today["sectors"][s].get("market_cap") or 0.0
-        streak = 0
-        for v in reversed(_series(history, s, "inst_net_value")):
-            if v > 0:
-                streak += 1
-            else:
-                break
-        ch = _series(history[-21:], s, "avg_change_pct")
-        mch = [d["market_change_pct"] for d in history[-21:]]
-        rs5_now = _compound(ch[-5:]) - _compound(mch[-5:])
-        rs5_prev = (_compound(ch[-6:-1]) - _compound(mch[-6:-1])) if len(ch) >= 6 else None
-        rows[s] = {
-            "vol_slope": slope(share5),
-            "high_delta": float(high_delta),
-            "inst_strength": inst3 / cap if cap > 0 else 0.0,
-            "inst_streak": float(streak),
-            "ret20": _compound(ch),
-            "rs_turn": 1.0 if (rs5_prev is not None and rs5_prev <= 0 < rs5_now) else 0.0,
-        }
-    df = pd.DataFrame.from_dict(rows, orient="index")
-    score = (
-        WEIGHTS["vol_slope"] * percentile_rank(df["vol_slope"])
-        + WEIGHTS["high_delta"] * percentile_rank(df["high_delta"])
-        + WEIGHTS["inst_strength"] * percentile_rank(df["inst_strength"])
-        + WEIGHTS["inst_streak"] * percentile_rank(df["inst_streak"])
-        + WEIGHTS["low_base"] * percentile_rank(-df["ret20"]) * (percentile_rank(df["ret20"]) <= 0.5)
-        + WEIGHTS["rs_turn"] * df["rs_turn"]
-    )
-    df["score"] = score.round(1)
-    return df.sort_values("score", ascending=False)
-
-
-def score_arrow(scores: list) -> str:
-    """近3日評分(舊→新,含今日)→ ↑(連升)/↓(連跌)/→;不足3日回「資料累積中」。"""
-    if len(scores) < 3:
-        return "資料累積中"
-    a, b, c = scores[-3:]
-    if a < b < c:
-        return "↑"
-    if a > b > c:
-        return "↓"
-    return "→"
+    df = member_rows.dropna(subset=["industry", "change_pct"]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=["strong_count", "member_count", "strong_ratio"])
+    df["is_strong"] = df["change_pct"] > threshold
+    g = df.groupby("industry")
+    out = pd.DataFrame({
+        "strong_count": g["is_strong"].sum().astype(int),
+        "member_count": g["code"].nunique().astype(int),
+    })
+    out["strong_ratio"] = out["strong_count"] / out["member_count"].replace(0, np.nan)
+    out = out[out["strong_count"] >= min_count]
+    return out.sort_values(["strong_count", "strong_ratio"], ascending=False)

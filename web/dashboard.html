@@ -76,11 +76,11 @@ canvas { max-width: 100%; }
     <canvas id="share-chart"></canvas>
   </div>
 
-  <h2>突破口綜合評分(0–100)</h2>
-  <div class="meta" style="margin-bottom:8px">點擊列展開明細;↑ 需近3日連升才視為有效訊號。</div>
+  <h2>今日強勢族群(漲幅 &gt;8% 家數)</h2>
+  <div class="meta" style="margin-bottom:8px">統計當日漲幅逾 8%(準漲停)的個股落在哪些族群,依強勢股家數排序;點擊列展開強勢個股清單。</div>
   <table id="score-table">
     <thead><tr>
-      <th>族群</th><th>評分</th><th>近3日</th><th>法人3日強度</th><th>連買天數</th>
+      <th>族群</th><th>強勢股家數</th><th>強勢比例</th><th>族群家數</th>
     </tr></thead>
     <tbody></tbody>
   </table>
@@ -187,42 +187,28 @@ canvas { max-width: 100%; }
     },
   });
 
-  /* ---- F3 評分表(點擊展開明細) ---- */
-  const DETAIL_LABELS = {
-    vol_slope: "占比5日斜率", high_delta: "新高家數3日變化", inst_strength: "法人3日強度",
-    inst_streak: "法人連買天數", ret20: "20日漲幅%", rs_turn: "相對強度轉正",
-  };
-  function arrowHtml(a) {
-    if (a === "↑") return '<span class="arrow-up">↑</span>';
-    if (a === "↓") return '<span class="arrow-down">↓</span>';
-    if (a === "→") return "→";
-    return '<span class="pending">' + a + "</span>";
+  /* ---- F3 今日強勢族群(點擊展開強勢個股) ---- */
+  const scoreBody = document.querySelector("#score-table tbody");
+  if (!D.breakout.length) {
+    scoreBody.innerHTML = '<tr><td colspan="4" class="pending">今日無漲幅逾 8% 的族群性強勢股</td></tr>';
+  } else {
+    scoreBody.innerHTML = D.breakout.map((b, i) =>
+      '<tr class="clickable" data-i="' + i + '"><td>' + b.industry + "</td>" +
+      '<td class="score">' + b.strong_count + "</td>" +
+      "<td>" + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
+      "<td>" + b.member_count + "</td></tr>" +
+      '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="4">強勢個股:' +
+      b.strong_stocks.map(s =>
+        '<span class="up">' + s.code + " " + s.name + " +" + s.change_pct.toFixed(2) + "%</span>")
+        .join("、") +
+      "</td></tr>").join("");
+    scoreBody.addEventListener("click", e => {
+      const tr = e.target.closest("tr.clickable");
+      if (!tr) return;
+      const d = document.querySelector('tr.detail-row[data-d="' + tr.dataset.i + '"]');
+      d.hidden = !d.hidden;
+    });
   }
-  document.querySelector("#score-table tbody").innerHTML = D.breakout.map((b, i) =>
-    '<tr class="clickable" data-i="' + i + '"><td>' + b.industry + "</td>" +
-    '<td class="score">' + b.score.toFixed(1) + "</td>" +
-    "<td>" + arrowHtml(b.arrow) + "</td>" +
-    "<td>" + (b.detail.inst_strength * 100).toFixed(3) + "%</td>" +
-    "<td>" + b.detail.inst_streak.toFixed(0) + "</td></tr>" +
-    '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="5">' +
-    '<div class="detail-grid">' +
-    Object.entries(DETAIL_LABELS).map(([k, label]) =>
-      "<span>" + label + ":<b>" +
-      (k === "rs_turn" ? (b.detail[k] ? "是" : "否")
-        : k === "inst_strength" ? (b.detail[k] * 100).toFixed(3) + "%"
-        : b.detail[k].toFixed(k === "ret20" ? 2 : 4)) + "</b></span>").join("") +
-    "</div><div style=\"margin-top:6px\">法人買超前5名:" +
-    (b.top_inst_stocks.length
-      ? b.top_inst_stocks.map(t => t.code + " " + t.name + "(" +
-          (t.net_value / 1e8).toFixed(2) + "億)").join("、")
-      : "無買超個股") +
-    "</div></td></tr>").join("");
-  document.querySelector("#score-table tbody").addEventListener("click", e => {
-    const tr = e.target.closest("tr.clickable");
-    if (!tr) return;
-    const d = document.querySelector('tr.detail-row[data-d="' + tr.dataset.i + '"]');
-    d.hidden = !d.hidden;
-  });
 })();
 </script>
 </body>

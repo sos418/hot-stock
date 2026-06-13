@@ -4,25 +4,6 @@ import pytest
 import scoring
 
 
-def test_percentile_rank_normalizes_to_unit_interval():
-    s = pd.Series([10, 20, 30, 40], index=list("abcd"))
-    r = scoring.percentile_rank(s)
-    assert r["a"] == 0.0
-    assert r["d"] == 1.0
-    assert r["b"] == pytest.approx(1 / 3)
-
-
-def test_percentile_rank_ties_and_singleton():
-    assert scoring.percentile_rank(pd.Series([5, 5], index=["a", "b"])).tolist() == [0.5, 0.5]
-    assert scoring.percentile_rank(pd.Series([7], index=["x"])).iloc[0] == 0.5
-
-
-def test_slope():
-    assert scoring.slope([1, 2, 3, 4, 5]) == pytest.approx(1.0)
-    assert scoring.slope([3]) == 0.0
-    assert scoring.slope([]) == 0.0
-
-
 def test_index_stats():
     closes = pd.Series([float(100 + i) for i in range(25)])  # 100..124
     s = scoring.index_stats(closes)
@@ -63,46 +44,26 @@ def test_aggregate_sectors():
     assert out.loc["金融保險", "turnover_share"] == pytest.approx(0.2)
 
 
-def _day(date, strong, weak):
-    return {"date": date, "market_change_pct": 0.0, "sectors": {"強": strong, "弱": weak}}
+def test_strong_stock_sectors():
+    """強勢股(漲幅>8%)族群榜:依家數排序,家數<2 與門檻邊界排除。"""
+    data = [
+        ("X", "G0", 9.0), ("Y", "G0", 9.0), ("Z", "G0", 9.0),  # G0: 3 強勢
+        ("A", "G1", 9.0), ("B", "G1", 10.0), ("C", "G1", 1.0),  # G1: 2 強勢 / 3
+        ("D", "G2", 9.5), ("E", "G2", 2.0),                      # G2: 1 強勢 → 不入榜
+        ("F", "G3", 8.0),                                        # 8.0 非 >8 → 0 強勢
+    ]
+    rows = [{"code": c, "name": c, "industry": g, "change_pct": p} for c, g, p in data]
+    out = scoring.strong_stock_sectors(pd.DataFrame(rows))
+    assert list(out.index) == ["G0", "G1"]          # 依家數排序、<2 已濾
+    assert out.loc["G1", "strong_count"] == 2
+    assert out.loc["G1", "member_count"] == 3
+    assert out.loc["G1", "strong_ratio"] == pytest.approx(2 / 3)
 
 
-def make_history():
-    """強: 量價籌碼全面領先、20日低基期、5日相對強度由負轉正 → 100分。
-    弱: 全面落後、漲幅在前50% → 0分。"""
-    strong_chg = [-5.0, -5.0, 0.0, 0.0, 0.0, 1.0, 1.0]
-    weak_chg = [1.0] * 7
-    hist = []
-    for i in range(7):
-        hist.append(_day(
-            f"2026-06-0{i + 1}",
-            {"turnover_share": 0.1 + 0.03 * i, "avg_change_pct": strong_chg[i],
-             "new_high_count": i, "inst_net_value": 100.0, "market_cap": 1000.0},
-            {"turnover_share": 0.3 - 0.03 * i, "avg_change_pct": weak_chg[i],
-             "new_high_count": 6 - i, "inst_net_value": -100.0, "market_cap": 1000.0},
-        ))
-    return hist
-
-
-def test_breakout_score_boundaries():
-    df = scoring.compute_breakout_scores(make_history())
-    assert df.loc["強", "score"] == 100.0
-    assert df.loc["弱", "score"] == 0.0
-
-
-def test_score_arrow():
-    assert scoring.score_arrow([10.0, 20.0]) == "資料累積中"
-    assert scoring.score_arrow([10.0, 20.0, 30.0]) == "↑"
-    assert scoring.score_arrow([30.0, 20.0, 10.0]) == "↓"
-    assert scoring.score_arrow([10.0, 30.0, 20.0]) == "→"
-    assert scoring.score_arrow([10.0, 10.0, 20.0]) == "→"  # 非連升不給↑
-
-
-def test_breakout_scores_empty_sectors():
-    """族群為空(如產業別來源失敗)時應回傳空結果而非拋例外。"""
-    df = scoring.compute_breakout_scores([{"date": "2026-06-12", "market_change_pct": 0.0, "sectors": {}}])
-    assert df.empty
-    assert "score" in df.columns
+def test_strong_stock_sectors_empty():
+    out = scoring.strong_stock_sectors(pd.DataFrame(columns=["code", "industry", "change_pct"]))
+    assert out.empty
+    assert "strong_count" in out.columns
 
 
 def test_aggregate_sectors_market_denominator_and_member_count():
