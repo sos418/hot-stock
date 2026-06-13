@@ -21,6 +21,7 @@ DATA_JS = ROOT / "web/data.js"
 CHAIN_CACHE = ROOT / "data/industry_chains.json"
 CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
+MAX_TOP_SHARE = 0.60  # 龍頭個股成交額占族群比重高於此值視為單股獨大,不進榜(非族群輪動)
 
 
 def load_history(history_dir: Path) -> list:
@@ -151,7 +152,8 @@ def main():
     member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")
     sectors = scoring.aggregate_sectors(member_rows, prior_highs,
                                         market_turnover=total_turnover)
-    sectors = sectors[sectors["member_count"] >= MIN_GROUP_SIZE]
+    sectors = sectors[(sectors["member_count"] >= MIN_GROUP_SIZE)
+                      & (sectors["top_share"] <= MAX_TOP_SHARE)]
 
     snapshot = {
         "date": date_str,

@@ -80,6 +80,8 @@ def aggregate_sectors(stocks: pd.DataFrame, prior_highs: dict,
         "inst_net_value": g["inst_net_value"].sum(),
         "market_cap": g["market_cap"].sum(),
         "member_count": g["code"].nunique().astype(int),
+        # 龍頭個股成交額占該族群比重(集中度);族群內每檔唯一一列,取組內最大
+        "top_share": (g["turnover"].max() / turnover.replace(0, np.nan)).fillna(0.0),
     })
     total = float(market_turnover) if market_turnover else float(out["turnover"].sum())
     out["turnover_share"] = out["turnover"] / total if total else 0.0

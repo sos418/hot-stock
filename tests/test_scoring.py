@@ -115,3 +115,16 @@ def test_aggregate_sectors_market_denominator_and_member_count():
     out = scoring.aggregate_sectors(pd.DataFrame(rows), {}, market_turnover=1000.0)
     assert out.loc["G1", "turnover_share"] == pytest.approx(0.8)  # 分母=全市場
     assert out.loc["G1", "member_count"] == 2
+
+
+def test_aggregate_sectors_top_share():
+    """top_share = 龍頭個股成交額占該族群比重,供集中度過濾。"""
+    rows = []
+    for code, grp, turnover in [("A", "G1", 800.0), ("B", "G1", 200.0),   # 龍頭 80%
+                                ("C", "G2", 500.0), ("D", "G2", 500.0)]:  # 各 50%
+        rows.append({"code": code, "name": code, "industry": grp, "close": 10.0,
+                     "change_pct": 1.0, "turnover": turnover,
+                     "inst_net_value": 0.0, "market_cap": 100.0})
+    out = scoring.aggregate_sectors(pd.DataFrame(rows), {})
+    assert out.loc["G1", "top_share"] == pytest.approx(0.8)
+    assert out.loc["G2", "top_share"] == pytest.approx(0.5)
