@@ -10,9 +10,9 @@ def test_parse_chain_name():
 
 
 def test_parse_chain_page_levels_and_dedupe():
-    pairs = fetchers.parse_chain_page(HTML)
-    assert ("細分 X", "1111") in pairs          # 細分類:清洗 &nbsp; 與 (N家)
-    assert ("主分A", "3333") in pairs           # 主分類 companyList
-    assert ("本國上市公司", "1111") not in pairs  # 章節標籤不可當族群
-    assert len([p for p in pairs if p[0] == "細分 X"]) == 2  # 重複表格已去重
-    assert ("主分B", "4444") in pairs
+    triples = fetchers.parse_chain_page(HTML)
+    assert ("sub", "細分 X", "1111") in triples     # 細分類(sc_company 表)
+    assert ("main", "主分A", "3333") in triples      # 主分類(companyList)
+    assert ("main", "主分B", "4444") in triples
+    assert not any(g == "本國上市公司" for _, g, _ in triples)  # 章節標籤不可當族群
+    assert len([t for t in triples if t[1] == "細分 X"]) == 2   # 重複表格已去重

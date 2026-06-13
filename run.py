@@ -148,6 +148,10 @@ def main():
     market_change = float((stocks["change_pct"].fillna(0) * stocks["turnover"]).sum()
                           / total_turnover) if total_turnover else 0.0
 
+    # 族群層級對照(鏈/主分類/細分類),供前端標記與篩選
+    level_map = dict(zip(groups["group"], groups["level"]))
+    LEVEL_LABEL = {"chain": "鏈", "main": "主分類", "sub": "細分類"}
+
     # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
     member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")
     sectors = scoring.aggregate_sectors(member_rows, prior_highs,
@@ -176,6 +180,7 @@ def main():
         hits = hits.sort_values("change_pct", ascending=False)
         breakout.append({
             "industry": ind_name,
+            "level": LEVEL_LABEL.get(level_map.get(ind_name), ""),
             "strong_count": int(row["strong_count"]),
             "member_count": int(row["member_count"]),
             "strong_ratio": round(float(row["strong_ratio"]), 4),
@@ -188,6 +193,7 @@ def main():
         json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
 
     hot = [{"industry": idx,
+            "level": LEVEL_LABEL.get(level_map.get(idx), ""),
             "avg_change_pct": round(float(r["avg_change_pct"]), 2),
             "turnover_share": round(float(r["turnover_share"]), 4),
             "limit_up_count": int(r["limit_up_count"]),

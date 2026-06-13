@@ -66,16 +66,17 @@ w("tpex_inst.json", [{"SecuritiesCompanyCode": c, "CompanyName": n,
                       "TotalDifference": str(random.randint(-3000, 5000) * 1000)}
                      for c, n, _ in TPEX_STOCKS])
 
-# 產業價值鏈族群(一檔可屬多族群;「迷你族群」<3 檔,驗證過濾)
+# 產業價值鏈族群(一檔可屬多族群;含三種層級;「迷你族群」<3 檔驗證過濾)
 w("industry_chains.json", {"fetched_at": TODAY.isoformat(), "groups": [
-    {"code": c, "group": g} for g, codes in {
-        "晶圓製造": ["2330", "2303", "5483", "3105"],
-        "記憶體IC": ["3034", "5274", "8069"],
-        "AI伺服器": ["2317", "2382", "3231"],
-        "貨櫃航運": ["2603", "2609", "2615"],
-        "金控": ["2881", "2882", "2891"],
-        "迷你族群": ["2330", "2317"],
-    }.items() for c in codes]})
+    {"code": c, "group": g, "level": lvl} for g, lvl, codes in [
+        ("半導體", "chain", ["2330", "2303", "3034", "5483", "3105", "5274"]),
+        ("晶圓製造", "sub", ["2330", "2303", "5483", "3105"]),
+        ("記憶體IC", "sub", ["3034", "5274", "8069"]),
+        ("AI伺服器", "main", ["2317", "2382", "3231"]),
+        ("貨櫃航運", "main", ["2603", "2609", "2615"]),
+        ("金控", "chain", ["2881", "2882", "2891"]),
+        ("迷你族群", "sub", ["2330", "2317"]),
+    ] for c in codes]})
 
 dates = []
 d = TODAY - dt.timedelta(days=90)

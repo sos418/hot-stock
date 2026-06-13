@@ -3,75 +3,123 @@
  "groups": [
   {
    "code": "2330",
-   "group": "晶圓製造"
+   "group": "半導體",
+   "level": "chain"
   },
   {
    "code": "2303",
-   "group": "晶圓製造"
-  },
-  {
-   "code": "5483",
-   "group": "晶圓製造"
-  },
-  {
-   "code": "3105",
-   "group": "晶圓製造"
+   "group": "半導體",
+   "level": "chain"
   },
   {
    "code": "3034",
-   "group": "記憶體IC"
+   "group": "半導體",
+   "level": "chain"
+  },
+  {
+   "code": "5483",
+   "group": "半導體",
+   "level": "chain"
+  },
+  {
+   "code": "3105",
+   "group": "半導體",
+   "level": "chain"
   },
   {
    "code": "5274",
-   "group": "記憶體IC"
-  },
-  {
-   "code": "8069",
-   "group": "記憶體IC"
-  },
-  {
-   "code": "2317",
-   "group": "AI伺服器"
-  },
-  {
-   "code": "2382",
-   "group": "AI伺服器"
-  },
-  {
-   "code": "3231",
-   "group": "AI伺服器"
-  },
-  {
-   "code": "2603",
-   "group": "貨櫃航運"
-  },
-  {
-   "code": "2609",
-   "group": "貨櫃航運"
-  },
-  {
-   "code": "2615",
-   "group": "貨櫃航運"
-  },
-  {
-   "code": "2881",
-   "group": "金控"
-  },
-  {
-   "code": "2882",
-   "group": "金控"
-  },
-  {
-   "code": "2891",
-   "group": "金控"
+   "group": "半導體",
+   "level": "chain"
   },
   {
    "code": "2330",
-   "group": "迷你族群"
+   "group": "晶圓製造",
+   "level": "sub"
+  },
+  {
+   "code": "2303",
+   "group": "晶圓製造",
+   "level": "sub"
+  },
+  {
+   "code": "5483",
+   "group": "晶圓製造",
+   "level": "sub"
+  },
+  {
+   "code": "3105",
+   "group": "晶圓製造",
+   "level": "sub"
+  },
+  {
+   "code": "3034",
+   "group": "記憶體IC",
+   "level": "sub"
+  },
+  {
+   "code": "5274",
+   "group": "記憶體IC",
+   "level": "sub"
+  },
+  {
+   "code": "8069",
+   "group": "記憶體IC",
+   "level": "sub"
   },
   {
    "code": "2317",
-   "group": "迷你族群"
+   "group": "AI伺服器",
+   "level": "main"
+  },
+  {
+   "code": "2382",
+   "group": "AI伺服器",
+   "level": "main"
+  },
+  {
+   "code": "3231",
+   "group": "AI伺服器",
+   "level": "main"
+  },
+  {
+   "code": "2603",
+   "group": "貨櫃航運",
+   "level": "main"
+  },
+  {
+   "code": "2609",
+   "group": "貨櫃航運",
+   "level": "main"
+  },
+  {
+   "code": "2615",
+   "group": "貨櫃航運",
+   "level": "main"
+  },
+  {
+   "code": "2881",
+   "group": "金控",
+   "level": "chain"
+  },
+  {
+   "code": "2882",
+   "group": "金控",
+   "level": "chain"
+  },
+  {
+   "code": "2891",
+   "group": "金控",
+   "level": "chain"
+  },
+  {
+   "code": "2330",
+   "group": "迷你族群",
+   "level": "sub"
+  },
+  {
+   "code": "2317",
+   "group": "迷你族群",
+   "level": "sub"
   }
  ]
 }
