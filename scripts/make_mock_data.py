@@ -70,6 +70,7 @@ w("tpex_inst.json", [{"SecuritiesCompanyCode": c, "CompanyName": n,
 w("industry_chains.json", {"fetched_at": TODAY.isoformat(), "groups": [
     {"code": c, "group": g, "level": lvl} for g, lvl, codes in [
         ("半導體", "chain", ["2330", "2303", "3034", "5483", "3105", "5274"]),
+        ("人工智慧", "chain", ["2317", "2382", "3231", "3034"]),  # 題材鏈,供主題標籤展示
         ("晶圓製造", "sub", ["2330", "2303", "5483", "3105"]),
         ("記憶體IC", "sub", ["3034", "5274", "8069"]),
         ("AI伺服器", "main", ["2317", "2382", "3231"]),

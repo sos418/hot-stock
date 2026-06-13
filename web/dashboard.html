@@ -47,6 +47,11 @@ th:first-child, td:first-child { text-align: left; }
 .filter-btn { margin-right: 8px; padding: 3px 12px; border-radius: 14px; border: 1px solid var(--line);
   background: var(--card); color: var(--muted); cursor: pointer; font-size: 13px; }
 .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+select { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+.theme-pill { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #3a2d4d; color: #d9b3ff; margin-left: 4px; }
+.theme-pill.hot { background: #c9a227; color: #1a1a1a; font-weight: 600; }
+.theme-count { color: #c9a7ff; font-size: 12px; margin-left: 6px; }
+tr.dim td { opacity: 0.38; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #222b3a; }
 tr.detail-row td { background: #161c26; text-align: left; font-size: 13px; color: var(--muted); }
@@ -89,6 +94,7 @@ canvas { max-width: 100%; }
   <div class="meta" style="margin-bottom:8px">統計當日漲幅逾 8%(準漲停)的個股落在哪些族群。點欄位標題可排序、點列展開強勢個股清單。
     層級:鏈(整條產業鏈,最廣)&gt;主分類&gt;細分類(最細)——例:被動元件(鏈)底下有電容器、電感器(主/細分類)。</div>
   <div class="toggles" id="level-filter"></div>
+  <div class="toggles" id="theme-focus" style="margin-top:8px"></div>
   <table id="score-table">
     <thead><tr>
       <th data-sort="industry">族群</th>
@@ -206,14 +212,27 @@ canvas { max-width: 100%; }
   const scoreBody = document.querySelector("#score-table tbody");
   const F3 = D.breakout.map((b, i) => Object.assign({ _i: i }, b));
   let levelFilter = "全部";
+  let themeFocus = "";   // 題材聚焦(空=不聚焦)
   let sortKey = "strong_count";
   let sortDir = -1;  // -1 降冪 / 1 升冪
 
   function lvlBadge(l) { return l ? '<span class="lvl lvl-' + l + '">' + l + "</span>" : ""; }
+  function themeCount(b) {
+    return themeFocus ? b.strong_stocks.filter(s => s.themes.indexOf(themeFocus) >= 0).length : 0;
+  }
+  function stockHtml(s) {
+    const pills = s.themes.map(t =>
+      '<span class="theme-pill' + (t === themeFocus ? " hot" : "") + '">' + t + "</span>").join("");
+    return '<span class="up">' + s.code + " " + s.name + " +" + s.change_pct.toFixed(2) + "%</span>" + pills;
+  }
 
   function renderF3() {
     let rows = levelFilter === "全部" ? F3 : F3.filter(b => b.level === levelFilter);
     rows = rows.slice().sort((a, b) => {
+      if (themeFocus) {                       // 聚焦時:有該題材強勢股的族群優先
+        const d = themeCount(b) - themeCount(a);
+        if (d) return d;
+      }
       const x = a[sortKey], y = b[sortKey];
       const c = typeof x === "string" ? x.localeCompare(y, "zh-Hant") : x - y;
       return c * sortDir || a.strong_count - b.strong_count;  // 同值以家數為次序
@@ -222,18 +241,20 @@ canvas { max-width: 100%; }
       scoreBody.innerHTML = '<tr><td colspan="5" class="pending">此層級今日無族群性強勢股(漲幅&gt;8% ≥2 檔)</td></tr>';
       return;
     }
-    scoreBody.innerHTML = rows.map(b =>
-      '<tr class="clickable" data-i="' + b._i + '">' +
-      "<td>" + b.industry + "</td>" +
-      "<td>" + lvlBadge(b.level) + "</td>" +
-      '<td class="score">' + b.strong_count + "</td>" +
-      "<td>" + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
-      "<td>" + b.member_count + "</td></tr>" +
-      '<tr class="detail-row" data-d="' + b._i + '" hidden><td colspan="5">強勢個股:' +
-      b.strong_stocks.map(s =>
-        '<span class="up">' + s.code + " " + s.name + " +" + s.change_pct.toFixed(2) + "%</span>")
-        .join("、") +
-      "</td></tr>").join("");
+    scoreBody.innerHTML = rows.map(b => {
+      const tc = themeCount(b);
+      const dim = themeFocus && tc === 0 ? " dim" : "";
+      const tcBadge = themeFocus && tc ? '<span class="theme-count">' + themeFocus + " ×" + tc + "</span>" : "";
+      return '<tr class="clickable' + dim + '" data-i="' + b._i + '">' +
+        "<td>" + b.industry + tcBadge + "</td>" +
+        "<td>" + lvlBadge(b.level) + "</td>" +
+        '<td class="score">' + b.strong_count + "</td>" +
+        "<td>" + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
+        "<td>" + b.member_count + "</td></tr>" +
+        '<tr class="detail-row' + dim + '" data-d="' + b._i + '" hidden><td colspan="5">強勢個股:' +
+        b.strong_stocks.map(stockHtml).join("、") +
+        "</td></tr>";
+    }).join("");
   }
 
   // 表頭標示排序方向
@@ -257,6 +278,21 @@ canvas { max-width: 100%; }
       b.classList.toggle("active", b === btn));
     renderF3();
   });
+
+  // 題材聚焦選單(AI/衛星…):選項取自當日強勢股實際出現的題材
+  const themeOpts = [...new Set(F3.flatMap(b => b.strong_stocks.flatMap(s => s.themes)))]
+    .sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  const themeBox = document.getElementById("theme-focus");
+  if (themeOpts.length) {
+    themeBox.innerHTML = '題材聚焦:<select id="theme-sel"><option value="">(不聚焦)</option>' +
+      themeOpts.map(t => '<option value="' + t + '">' + t + "</option>").join("") + "</select>";
+    document.getElementById("theme-sel").addEventListener("change", e => {
+      themeFocus = e.target.value;
+      renderF3();
+    });
+  } else {
+    themeBox.innerHTML = '<span class="meta">今日強勢股無對應題材鏈(AI/衛星等)</span>';
+  }
 
   // 欄位排序
   document.querySelectorAll("#score-table th[data-sort]").forEach(th => {
