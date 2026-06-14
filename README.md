@@ -21,8 +21,8 @@ python3 -m venv .venv
 # 收盤後(建議 15:00 之後,待證交所資料更新)執行
 .venv/bin/python run.py
 
-# 雙擊或開啟 web/dashboard.html 於瀏覽器檢視
-open web/dashboard.html
+# 雙擊或開啟 web/index.html 於瀏覽器檢視
+open web/index.html
 ```
 
 - 無伺服器、無資料庫;每日彙總與評分沉澱於 `data/history/YYYY-MM-DD.json`(同日重跑會覆蓋)。

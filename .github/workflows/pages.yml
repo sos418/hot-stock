@@ -1,0 +1,33 @@
+name: 部署儀表板到 GitHub Pages
+
+on:
+  # 每次 push(含 daily.yml 盤後 commit data.js)後重新部署
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時間只跑一個部署;不取消進行中的(避免半途中斷)
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web                # 只發布 web/(index.html + data.js)
+      - id: deployment
+        uses: actions/deploy-pages@v4
