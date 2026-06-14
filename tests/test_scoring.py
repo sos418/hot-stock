@@ -44,28 +44,6 @@ def test_aggregate_sectors():
     assert out.loc["金融保險", "turnover_share"] == pytest.approx(0.2)
 
 
-def test_strong_stock_sectors():
-    """強勢股(漲幅>8%)族群榜:依家數排序,家數<2 與門檻邊界排除。"""
-    data = [
-        ("X", "G0", 9.0), ("Y", "G0", 9.0), ("Z", "G0", 9.0),  # G0: 3 強勢
-        ("A", "G1", 9.0), ("B", "G1", 10.0), ("C", "G1", 1.0),  # G1: 2 強勢 / 3
-        ("D", "G2", 9.5), ("E", "G2", 2.0),                      # G2: 1 強勢 → 不入榜
-        ("F", "G3", 8.0),                                        # 8.0 非 >8 → 0 強勢
-    ]
-    rows = [{"code": c, "name": c, "industry": g, "change_pct": p} for c, g, p in data]
-    out = scoring.strong_stock_sectors(pd.DataFrame(rows))
-    assert list(out.index) == ["G0", "G1"]          # 依家數排序、<2 已濾
-    assert out.loc["G1", "strong_count"] == 2
-    assert out.loc["G1", "member_count"] == 3
-    assert out.loc["G1", "strong_ratio"] == pytest.approx(2 / 3)
-
-
-def test_strong_stock_sectors_empty():
-    out = scoring.strong_stock_sectors(pd.DataFrame(columns=["code", "industry", "change_pct"]))
-    assert out.empty
-    assert "strong_count" in out.columns
-
-
 def test_aggregate_sectors_market_denominator_and_member_count():
     rows = []
     for code, grp, turnover in [("A", "G1", 600.0), ("B", "G1", 200.0),

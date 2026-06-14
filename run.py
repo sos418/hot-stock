@@ -114,55 +114,13 @@ def render_indices(indices: dict) -> dict:
     return {"cards": cards, "chart": chart, "corr_twii_sox": corr}
 
 
-def build_strong_tree(member_rows: pd.DataFrame) -> list:
-    """F3 今日強勢族群:以產業鏈為大傘,底下掛熱門子族群(層級顯示)。
-
-    member_rows: (個股, 族群) 列,含 industry(族群名), chain(所屬產業鏈), code, name, change_pct。
-    鏈層級大傘 industry == chain;子群 industry != chain。
-    """
-    df = member_rows.dropna(subset=["industry", "change_pct"]).copy()
-
-    def strong_list(frame):
-        hits = frame[frame["change_pct"] > scoring.STRONG_THRESHOLD].drop_duplicates(
-            "code").sort_values("change_pct", ascending=False)
-        return [{"code": r.code, "name": r.name, "change_pct": round(float(r.change_pct), 2)}
-                for r in hits.itertuples()]
-
-    umb = df[df["industry"] == df["chain"]]
-    chains = scoring.strong_stock_sectors(umb, key="chain")
-    chains = chains[chains["member_count"] >= MIN_GROUP_SIZE]
-
-    subs = df[df["industry"] != df["chain"]]
-    sub_stats = scoring.strong_stock_sectors(subs, key=["chain", "industry"])
-    kids_by_chain: dict = {}
-    for (ch, sub_name), srow in sub_stats.iterrows():
-        kids_by_chain.setdefault(ch, []).append({
-            "industry": sub_name,
-            "strong_count": int(srow["strong_count"]),
-            "member_count": int(srow["member_count"]),
-            "strong_ratio": round(float(srow["strong_ratio"]), 4),
-            "strong_stocks": strong_list(subs[(subs["chain"] == ch)
-                                              & (subs["industry"] == sub_name)]),
-        })
-
-    tree = []
-    for chain_name, row in chains.iterrows():
-        tree.append({
-            "industry": chain_name,
-            "strong_count": int(row["strong_count"]),
-            "member_count": int(row["member_count"]),
-            "strong_ratio": round(float(row["strong_ratio"]), 4),
-            "strong_stocks": strong_list(umb[umb["chain"] == chain_name]),
-            "children": kids_by_chain.get(chain_name, []),
-        })
-    return tree
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true", help="使用 data/mock/ 樣本離線執行")
     ap.add_argument("--refresh-industry", action="store_true",
                     help="強制更新產業價值鏈分類快取")
+    ap.add_argument("--strong-threshold", type=float, default=scoring.STRONG_THRESHOLD,
+                    help=f"F3 強勢股漲幅門檻%%(預設 {scoring.STRONG_THRESHOLD};儀表板可再動態調整)")
     args = ap.parse_args()
     if args.mock:
         fetchers.set_mock(ROOT / "data/mock")
@@ -209,8 +167,10 @@ def main():
         "indices": {sym: {"dates": list(s.index), "closes": [float(x) for x in s]}
                     for sym, s in indices.items()},
     }
-    # F3 今日強勢族群:當日漲幅 >8% 的個股做族群分類,以產業鏈為大傘、底下掛熱門子族群
-    breakout = build_strong_tree(member_rows)
+    # F3 今日強勢族群:輸出每檔(個股,族群)的漲幅原始資料,門檻由前端動態計算
+    # 每列 [代號, 名稱, 漲幅%, 所屬產業鏈, 族群名];前端依輸入門檻即時統計強勢股家數
+    f3_members = [[r.code, r.name, round(float(r.change_pct), 2), r.chain, r.industry]
+                  for r in member_rows.itertuples() if pd.notna(r.change_pct)]
 
     (history_dir / f"{date_str}.json").write_text(
         json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
@@ -228,7 +188,9 @@ def main():
         "stale_sources": stale,
         "indices": render_indices(indices),
         "sectors_hot": hot,
-        "breakout": breakout,
+        "f3_members": f3_members,
+        "strong_threshold": args.strong_threshold,
+        "min_group_size": MIN_GROUP_SIZE,
     }
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     DATA_JS.write_text("window.DASHBOARD_DATA = "

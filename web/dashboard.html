@@ -76,8 +76,13 @@ canvas { max-width: 100%; }
     <canvas id="share-chart"></canvas>
   </div>
 
-  <h2>今日強勢族群(漲幅 &gt;8% 家數)</h2>
-  <div class="meta" style="margin-bottom:8px">以<b>產業鏈</b>為單位統計當日漲幅逾 8%(準漲停)的個股;點欄位標題可排序,點族群列展開底下熱門子族群與強勢個股。</div>
+  <h2>今日強勢族群
+    <span style="font-size:15px;font-weight:400;color:var(--muted)">漲幅 &gt;
+      <input id="th-input" type="number" step="0.5" min="0" max="10"
+             style="width:56px;background:var(--card);color:var(--text);border:1px solid var(--line);
+                    border-radius:4px;padding:3px 6px;font-size:14px"> % 家數</span>
+  </h2>
+  <div class="meta" style="margin-bottom:8px">以<b>產業鏈</b>為單位統計當日漲幅超過上方門檻的個股(可即時調整);點欄位標題可排序,點族群列展開底下熱門子族群與強勢個股。</div>
   <table id="score-table">
     <thead><tr>
       <th>產業鏈</th>
@@ -190,17 +195,53 @@ canvas { max-width: 100%; }
     },
   });
 
-  /* ---- F3 今日強勢族群:產業鏈大傘 + 子族群層級,欄位可排序 ---- */
+  /* ---- F3 今日強勢族群:門檻可動態輸入,產業鏈大傘 + 子族群層級於前端即時計算 ---- */
   const scoreBody = document.querySelector("#score-table tbody");
+  const MIN_GROUP = D.min_group_size || 3;
   const stocksLine = arr => arr.map(s =>
     '<span class="up">' + s.code + " " + s.name + " +" + s.change_pct.toFixed(2) + "%</span>").join("、");
 
+  // 依門檻 th 從原始 (個股,族群) 資料建出「產業鏈 → 子族群」強勢樹
+  function computeTree(th) {
+    const chainAgg = {}, subAgg = {};
+    for (const [code, name, pct, chain, group] of (D.f3_members || [])) {
+      const bucket = group === chain ? chainAgg : subAgg;
+      const k = group === chain ? chain : chain + " " + group;
+      const a = bucket[k] || (bucket[k] = { chain, group, codes: new Set(), strong: [] });
+      a.codes.add(code);
+      if (pct > th) a.strong.push({ code, name, change_pct: pct });
+    }
+    const node = a => ({
+      industry: a.group, chain: a.chain, strong_count: a.strong.length,
+      member_count: a.codes.size, strong_ratio: a.strong.length / a.codes.size,
+      strong_stocks: a.strong.sort((x, y) => y.change_pct - x.change_pct),
+    });
+    const kids = {};
+    for (const k in subAgg) {
+      const a = subAgg[k];
+      if (a.strong.length >= 2) (kids[a.chain] || (kids[a.chain] = [])).push(node(a));
+    }
+    const tree = [];
+    for (const c in chainAgg) {
+      const a = chainAgg[c];
+      if (a.strong.length >= 2 && a.codes.size >= MIN_GROUP) {
+        const n = node(a);
+        n.children = (kids[c] || []).sort((x, y) =>
+          y.strong_count - x.strong_count || y.strong_ratio - x.strong_ratio);
+        tree.push(n);
+      }
+    }
+    return tree;
+  }
+
   function renderStrong(key, desc) {
-    if (!D.breakout.length) {
-      scoreBody.innerHTML = '<tr><td colspan="4" class="pending">今日無漲幅逾 8% 的族群性強勢股</td></tr>';
+    const th = parseFloat(thInput.value);
+    const data = computeTree(isNaN(th) ? D.strong_threshold : th);
+    if (!data.length) {
+      scoreBody.innerHTML = '<tr><td colspan="4" class="pending">此門檻下無族群性強勢股(放寬門檻試試)</td></tr>';
       return;
     }
-    const rows = D.breakout.slice().sort((a, b) =>
+    const rows = data.sort((a, b) =>
       (desc ? b[key] - a[key] : a[key] - b[key])
       || (b.strong_count - a.strong_count) || (b.strong_ratio - a.strong_ratio));
     scoreBody.innerHTML = rows.map((b, i) => {
@@ -221,8 +262,11 @@ canvas { max-width: 100%; }
     }).join("");
   }
 
+  const thInput = document.getElementById("th-input");
+  thInput.value = D.strong_threshold != null ? D.strong_threshold : 8;
   let sortKey = "strong_ratio", sortDesc = true;  // 預設依強勢比例(整鏈在噴者優先)
   renderStrong(sortKey, sortDesc);
+  thInput.addEventListener("input", () => renderStrong(sortKey, sortDesc));
 
   scoreBody.addEventListener("click", e => {
     const tr = e.target.closest("tr.clickable");
