@@ -70,6 +70,18 @@ canvas { max-width: 100%; }
 .chain-arrow { align-self: center; color: var(--muted); font-size: 18px; }
 .guide ul { margin: 4px 0 12px 18px; font-size: 13px; line-height: 1.75; }
 .guide .disc { color: var(--muted); font-size: 12px; padding-bottom: 14px; }
+.rot-wrap { display: flex; gap: 12px; flex-wrap: wrap; }
+.rot-col { flex: 1; min-width: 300px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.rot-col h4 { font-size: 14px; margin-bottom: 10px; }
+.rot-row { display: grid; grid-template-columns: minmax(0,1fr) 56px 66px 72px; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+.rot-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rot-row .bar { background: #161c26; border-radius: 3px; height: 10px; overflow: hidden; }
+.rot-row .bar i { display: block; height: 100%; }
+.rot-row .bar i.up { background: var(--up); }
+.rot-row .bar i.down { background: var(--down); }
+.rot-row .dv { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rot-row .now { text-align: right; color: var(--muted); font-size: 12px; }
+.rot-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -121,6 +133,10 @@ canvas { max-width: 100%; }
   <div class="panel">
     <canvas id="share-chart"></canvas>
   </div>
+
+  <h2>資金輪動 <span style="font-size:14px;font-weight:400;color:var(--muted)">近 5 交易日成交占比變化</span></h2>
+  <div class="meta" style="margin-bottom:8px">比較各產業鏈成交占比的<b>變化</b>(pp=百分點):占比上升=資金流入、可能成為下一波主流;下降=資金撤離。這是 F2「今天錢在哪」的跨日延伸——看錢從哪流到哪。</div>
+  <div id="rotation" class="rot-wrap"></div>
 
   <h2>今日強勢族群
     <span style="font-size:15px;font-weight:400;color:var(--muted)">漲幅 &gt;
@@ -413,6 +429,34 @@ canvas { max-width: 100%; }
     drawTrend(chainNames[0]);
     trendSel.addEventListener("change", () => drawTrend(trendSel.value));
   }
+
+  /* ---- 資金輪動:近 N 交易日成交占比變化(各產業鏈比較) ---- */
+  const ROT_WIN = 5;
+  (function renderRotation() {
+    const wrap = document.getElementById("rotation");
+    const rows = [];
+    for (const c in TRENDS) {
+      const ser = TRENDS[c].turnover_share.slice(-ROT_WIN).filter(x => x != null);
+      if (ser.length < 2) continue;
+      rows.push({ chain: c, now: ser[ser.length - 1], delta: +(ser[ser.length - 1] - ser[0]).toFixed(2) });
+    }
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="rot-empty">輪動資料累積中(需至少 2 個交易日的占比)</div>';
+      return;
+    }
+    const inflow = rows.filter(r => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 8);
+    const outflow = rows.filter(r => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 8);
+    const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.delta)));
+    const col = (title, list, cls) => '<div class="rot-col"><h4>' + title + "</h4>" +
+      (list.length ? list.map(r =>
+        '<div class="rot-row"><span class="nm">' + r.chain + "</span>" +
+        '<span class="bar"><i class="' + cls + '" style="width:' +
+        (Math.abs(r.delta) / maxAbs * 100).toFixed(0) + '%"></i></span>' +
+        '<span class="dv ' + cls + '">' + (r.delta > 0 ? "+" : "") + r.delta.toFixed(2) + "pp</span>" +
+        '<span class="now">今日 ' + r.now.toFixed(1) + "%</span></div>").join("")
+        : '<div class="rot-empty">無</div>') + "</div>";
+    wrap.innerHTML = col("資金流入(占比上升)", inflow, "up") + col("資金流出(占比下降)", outflow, "down");
+  })();
 })();
 </script>
 </body>
