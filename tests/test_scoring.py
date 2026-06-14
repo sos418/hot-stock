@@ -67,3 +67,26 @@ def test_aggregate_sectors_top_share():
     out = scoring.aggregate_sectors(pd.DataFrame(rows), {})
     assert out.loc["G1", "top_share"] == pytest.approx(0.8)
     assert out.loc["G2", "top_share"] == pytest.approx(0.5)
+
+
+def test_build_trends():
+    days = [
+        {"date": "2026-06-11",
+         "stocks": [{"code": "A", "change_pct": 9.0}, {"code": "B", "change_pct": 1.0}],
+         "sectors": {"半導體": {"turnover_share": 0.30}}},
+        {"date": "2026-06-12",
+         "stocks": [{"code": "A", "change_pct": 9.0}, {"code": "B", "change_pct": 9.5}],
+         "sectors": {"半導體": {"turnover_share": 0.40}}},
+    ]
+    cm = {"半導體": {"A", "B", "C"}}  # C 當天無成交資料 → 不計
+    t = scoring.build_trends(days, cm, threshold=8.0)
+    assert t["dates"] == ["2026-06-11", "2026-06-12"]
+    assert t["chains"]["半導體"]["strong_count"] == [1, 2]
+    assert t["chains"]["半導體"]["turnover_share"] == [30.0, 40.0]
+
+
+def test_build_trends_missing_sector_share():
+    days = [{"date": "d1", "stocks": [{"code": "A", "change_pct": 9.0}], "sectors": {}}]
+    t = scoring.build_trends(days, {"X": {"A"}}, threshold=8.0)
+    assert t["chains"]["X"]["strong_count"] == [1]
+    assert t["chains"]["X"]["turnover_share"] == [None]  # 未入 F2 榜

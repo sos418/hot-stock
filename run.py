@@ -21,6 +21,7 @@ DATA_JS = ROOT / "web/data.js"
 CHAIN_CACHE = ROOT / "data/industry_chains.json"
 CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
+TREND_DAYS = 20     # 趨勢圖回看的交易日數
 MAX_TOP_SHARE = 0.60  # 龍頭個股成交額占族群比重高於此值視為單股獨大,不進榜(非族群輪動)
 
 
@@ -184,6 +185,13 @@ def main():
             "new_high_count": int(r["new_high_count"])}
            for idx, r in sectors.iterrows()]
 
+    # 跨日趨勢(Phase 2):各產業鏈近 N 交易日強勢股家數/成交占比;固定參考門檻
+    chain_rows = groups[groups["group"] == groups["chain"]]
+    chain_members = {c: set(g["code"]) for c, g in chain_rows.groupby("chain")}
+    trend_days = (history + [snapshot])[-TREND_DAYS:]
+    trends = scoring.build_trends(trend_days, chain_members,
+                                  threshold=args.strong_threshold)
+
     payload = {
         "date": date_str,
         "generated_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -193,6 +201,8 @@ def main():
         "f3_members": f3_members,
         "strong_threshold": args.strong_threshold,
         "min_group_size": MIN_GROUP_SIZE,
+        "trends": trends,
+        "trend_threshold": args.strong_threshold,
     }
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     DATA_JS.write_text("window.DASHBOARD_DATA = "

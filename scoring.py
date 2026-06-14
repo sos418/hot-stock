@@ -78,3 +78,29 @@ def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 20):
 # F3「今日強勢族群」的統計(依輸入門檻計強勢股家數、族群成員數、強勢比例,
 # 以產業鏈為大傘、子群為層級)改在前端 web/dashboard.html 動態計算,
 # 以支援使用者即時調整漲幅門檻;此處僅保留 STRONG_THRESHOLD 作為預設值。
+
+
+def build_trends(days: list, chain_members: dict,
+                 threshold: float = STRONG_THRESHOLD) -> dict:
+    """跨日趨勢(Phase 2):各產業鏈近 N 個交易日的強勢股家數與成交占比。
+
+    days: 每日快照(舊→新),每筆需有 date、stocks([{code, change_pct}])、
+          sectors({族群: {turnover_share}})。
+    chain_members: {產業鏈: set(成員代號)}(取自分類的鏈層級)。
+    threshold: 強勢股漲幅門檻(固定參考值,趨勢圖用)。
+    回傳 {dates:[...], chains:{鏈:{strong_count:[...], turnover_share:[...]}}};
+    turnover_share 以 % 表示,當天該鏈未入 F2 榜時為 None。
+    """
+    dates = [d["date"] for d in days]
+    cp_by_day = [{s["code"]: s.get("change_pct") for s in d.get("stocks", [])} for d in days]
+    chains = {}
+    for chain, members in chain_members.items():
+        strong, share = [], []
+        for i, d in enumerate(days):
+            cp = cp_by_day[i]
+            strong.append(sum(1 for c in members
+                              if cp.get(c) is not None and cp[c] > threshold))
+            s = d.get("sectors", {}).get(chain, {}).get("turnover_share")
+            share.append(round(s * 100, 2) if s is not None else None)
+        chains[chain] = {"strong_count": strong, "turnover_share": share}
+    return {"dates": dates, "chains": chains}

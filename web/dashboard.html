@@ -89,9 +89,17 @@ canvas { max-width: 100%; }
       <th class="sortable" data-key="strong_count">強勢股家數</th>
       <th class="sortable" data-key="strong_ratio">強勢比例 ▾</th>
       <th class="sortable" data-key="member_count">族群家數</th>
+      <th>近20日家數</th>
     </tr></thead>
     <tbody></tbody>
   </table>
+
+  <h2>族群趨勢</h2>
+  <div class="meta" style="margin-bottom:8px">選一條產業鏈,看近 20 交易日的<b>強勢股家數</b>(漲幅 &gt;8%,紅線)與<b>成交占比</b>(藍線)走勢——判斷題材在加溫還是退燒。資料逐日累積,不足時顯示「累積中」。</div>
+  <div class="panel">
+    <select id="trend-select" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 8px;font-size:14px;margin-bottom:10px"></select>
+    <canvas id="trend-chart" height="90"></canvas>
+  </div>
 </div>
 
 <script src="data.js"></script>
@@ -198,8 +206,30 @@ canvas { max-width: 100%; }
   /* ---- F3 今日強勢族群:門檻可動態輸入,產業鏈大傘 + 子族群層級於前端即時計算 ---- */
   const scoreBody = document.querySelector("#score-table tbody");
   const MIN_GROUP = D.min_group_size || 3;
+  const TRENDS = (D.trends && D.trends.chains) || {};
   const stocksLine = arr => arr.map(s =>
     '<span class="up">' + s.code + " " + s.name + " +" + s.change_pct.toFixed(2) + "%</span>").join("、");
+
+  // 近 N 日強勢股家數的迷你走勢圖(inline SVG)+ 連 3 日漲跌箭頭
+  function trendArrow(vals) {
+    const v = vals.filter(x => x != null);
+    if (v.length < 3) return '<span class="pending">累積中</span>';
+    const [a, b, c] = v.slice(-3);
+    if (a < b && b < c) return '<span class="arrow-up">↑</span>';
+    if (a > b && b > c) return '<span class="arrow-down">↓</span>';
+    return "→";
+  }
+  function sparkline(vals) {
+    const v = vals.filter(x => x != null);
+    if (v.length < 2) return '<span class="pending">累積中</span>';
+    const w = 60, h = 16, max = Math.max(...v), min = Math.min(...v), rng = (max - min) || 1;
+    const pts = vals.map((x, i) => x == null ? null :
+      (i / (vals.length - 1) * w).toFixed(1) + "," + (h - (x - min) / rng * h).toFixed(1))
+      .filter(Boolean).join(" ");
+    return '<svg width="' + w + '" height="' + h + '" style="vertical-align:middle">' +
+      '<polyline points="' + pts + '" fill="none" stroke="#4d9fec" stroke-width="1.5"/></svg> ' +
+      trendArrow(vals);
+  }
 
   // 依門檻 th 從原始 (個股,族群) 資料建出「產業鏈 → 子族群」強勢樹
   function computeTree(th) {
@@ -238,7 +268,7 @@ canvas { max-width: 100%; }
     const th = parseFloat(thInput.value);
     const data = computeTree(isNaN(th) ? D.strong_threshold : th);
     if (!data.length) {
-      scoreBody.innerHTML = '<tr><td colspan="4" class="pending">此門檻下無族群性強勢股(放寬門檻試試)</td></tr>';
+      scoreBody.innerHTML = '<tr><td colspan="5" class="pending">此門檻下無族群性強勢股(放寬門檻試試)</td></tr>';
       return;
     }
     const rows = data.sort((a, b) =>
@@ -252,13 +282,15 @@ canvas { max-width: 100%; }
             "%):" + stocksLine(k.strong_stocks) + "</div>").join("") + "</div>"
         : "";
       const detail = kids + "全鏈強勢個股:" + stocksLine(b.strong_stocks);
+      const spark = TRENDS[b.industry] ? sparkline(TRENDS[b.industry].strong_count) : "";
       return '<tr class="clickable" data-i="' + i + '"><td>' + b.industry +
         (b.children && b.children.length ? ' <span class="pending">(' + b.children.length + ' 子群)</span>' : "") +
         "</td>" +
         '<td class="score">' + b.strong_count + "</td>" +
         "<td>" + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
-        "<td>" + b.member_count + "</td></tr>" +
-        '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="4">' + detail + "</td></tr>";
+        "<td>" + b.member_count + "</td>" +
+        '<td style="text-align:right">' + spark + "</td></tr>" +
+        '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="5">' + detail + "</td></tr>";
     }).join("");
   }
 
@@ -286,6 +318,53 @@ canvas { max-width: 100%; }
       renderStrong(sortKey, sortDesc);
     });
   });
+
+  /* ---- 族群趨勢圖:近 N 交易日 強勢股家數 + 成交占比 ---- */
+  const trendSel = document.getElementById("trend-select");
+  const chainNames = Object.keys(TRENDS);
+  if (!chainNames.length || (D.trends.dates || []).length < 1) {
+    trendSel.insertAdjacentHTML("afterend",
+      '<div class="pending" style="padding:20px">趨勢資料累積中(每交易日盤後自動新增一天)</div>');
+    trendSel.style.display = "none";
+  } else {
+    // 依今日(最後一天)強勢股家數排序,預設選最熱的鏈
+    const lastOf = c => { const a = TRENDS[c].strong_count; return a[a.length - 1] || 0; };
+    chainNames.sort((a, b) => lastOf(b) - lastOf(a));
+    trendSel.innerHTML = chainNames.map(c => '<option value="' + c + '">' + c + "</option>").join("");
+
+    let trendChart;
+    function drawTrend(chain) {
+      const t = TRENDS[chain];
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(document.getElementById("trend-chart"), {
+        type: "line",
+        data: {
+          labels: D.trends.dates,
+          datasets: [
+            { label: "強勢股家數 (>" + (D.trend_threshold || 8) + "%)", data: t.strong_count,
+              borderColor: "#e54d42", backgroundColor: "#e54d42", yAxisID: "y",
+              tension: 0.2, pointRadius: 2, spanGaps: true },
+            { label: "成交占比 %", data: t.turnover_share,
+              borderColor: "#4d9fec", backgroundColor: "#4d9fec", yAxisID: "y2",
+              tension: 0.2, pointRadius: 2, spanGaps: true },
+          ],
+        },
+        options: {
+          animation: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { labels: { color: "#e8eaed" } } },
+          scales: {
+            x: { ticks: { color: "#9aa3b2", maxTicksLimit: 10 }, grid: { color: "#222b3a" } },
+            y: { position: "left", beginAtZero: true, title: { display: true, text: "強勢股家數", color: "#e54d42" },
+                 ticks: { color: "#e54d42", precision: 0 }, grid: { color: "#222b3a" } },
+            y2: { position: "right", beginAtZero: true, title: { display: true, text: "成交占比%", color: "#4d9fec" },
+                  ticks: { color: "#4d9fec" }, grid: { display: false } },
+          },
+        },
+      });
+    }
+    drawTrend(chainNames[0]);
+    trendSel.addEventListener("change", () => drawTrend(trendSel.value));
+  }
 })();
 </script>
 </body>
