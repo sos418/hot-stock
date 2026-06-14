@@ -48,6 +48,14 @@ tr.detail-row td { background: #161c26; text-align: left; font-size: 13px; color
 .pending { color: var(--muted); font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 canvas { max-width: 100%; }
+.datebar { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 2px 0 4px; }
+.datebar .pill {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  background: var(--accent); color: #0c1118; font-weight: 700;
+  border-radius: 8px; padding: 6px 14px; font-size: 20px; letter-spacing: 0.5px;
+}
+.datebar .pill .lbl { font-size: 12px; font-weight: 600; opacity: 0.75; }
+.datebar .gen { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -120,8 +128,10 @@ canvas { max-width: 100%; }
   }
   function cls(v) { return v > 0 ? "up" : v < 0 ? "down" : ""; }
 
-  document.getElementById("meta").textContent =
-    "資料日期 " + D.date + "|產生於 " + D.generated_at;
+  document.getElementById("meta").innerHTML =
+    '<div class="datebar">' +
+    '<span class="pill"><span class="lbl">資料日期</span>' + D.date + "</span>" +
+    '<span class="gen">產生於 ' + D.generated_at + "</span></div>";
   document.getElementById("stale").innerHTML = (D.stale_sources || [])
     .map(s => '<span class="badge">資料延遲:' + s + "</span>").join("");
 
