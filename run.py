@@ -160,7 +160,9 @@ def main():
     snapshot = {
         "date": date_str,
         "market_change_pct": round(market_change, 4),
-        "stocks": [{"code": r.code, "close": r.close, "turnover": r.turnover}
+        # change_pct 供跨日趨勢(任一門檻的強勢股家數)回算;close 供創新高比對
+        "stocks": [{"code": r.code, "close": r.close, "turnover": r.turnover,
+                    "change_pct": round(float(r.change_pct), 2) if pd.notna(r.change_pct) else None}
                    for r in stocks.itertuples() if pd.notna(r.close)],
         "sectors": {idx: {k: (float(v) if pd.notna(v) else 0.0) for k, v in row.items()}
                     for idx, row in sectors.iterrows()},

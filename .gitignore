@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 .DS_Store
-data/history/
-web/data.js
 .pytest_cache/
 data/mock_history/
+# data/history/ 與 web/data.js 改為納入 git:GitHub Actions 每交易日盤後更新並 commit,
+# 趨勢資料因此能跨日累積、雲端備份,你只要 git pull 即可看到最新儀表板。
