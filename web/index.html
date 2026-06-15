@@ -82,6 +82,12 @@ canvas { max-width: 100%; }
 .rot-row .dv { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rot-row .now { text-align: right; color: var(--muted); font-size: 12px; }
 .rot-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+.rot-item { padding: 2px 0 6px; border-bottom: 1px solid #161c26; }
+.rot-item:last-child { border-bottom: 0; }
+.rot-sub { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--muted); margin: 2px 0 0 2px; }
+.rot-sub span.pos { color: var(--up); }
+.rot-sub span.neg { color: var(--down); }
+.rot-flag { background: #c9a227; color: #1a1a1a; font-weight: 700; border-radius: 4px; padding: 0 6px; font-size: 11px; cursor: help; }
 </style>
 </head>
 <body>
@@ -139,7 +145,7 @@ canvas { max-width: 100%; }
   </div>
 
   <h2>資金輪動 <span style="font-size:14px;font-weight:400;color:var(--muted)">近 5 交易日成交占比變化</span></h2>
-  <div class="meta" style="margin-bottom:8px">比較各產業鏈成交占比的<b>變化</b>:占比上升=資金流入、可能成為下一波主流;下降=資金撤離。這是 F2「今天錢在哪」的跨日延伸——看錢從哪流到哪。</div>
+  <div class="meta" style="margin-bottom:8px">比較各產業鏈成交占比的<b>變化</b>:占比上升=資金流入、可能成為下一波主流;下降=資金撤離。這是 F2「今天錢在哪」的跨日延伸——看錢從哪流到哪。每列下方疊上<b>漲跌·上漲廣度·漲停家數·法人買賣超</b>,辨別占比變化的真假。<b>「漲停鎖量?」</b>旗標=該族群在流出欄,但價漲、多檔漲停、法人淨買——占比下降很可能是漲停鎖量,而非資金真的流出。</div>
   <label style="display:inline-block;margin-bottom:10px;font-size:13px;cursor:pointer;color:var(--text)">
     <input type="checkbox" id="rot-rel"> 用相對變化 %(占比翻倍計,放大剛起漲的小題材;預設用百分點 pp)
   </label>
@@ -465,6 +471,26 @@ canvas { max-width: 100%; }
   /* ---- 資金輪動:近 N 交易日成交占比變化(pp 或 相對%;占比含/排除權王)---- */
   const ROT_WIN = 5;
   const rotRelCb = document.getElementById("rot-rel");
+  // 以族群名索引 F2 熱度資料,供輪動疊上「法人買賣超 + 漲停/上漲廣度」
+  const SEC_BY_NAME = {};
+  (D.sectors_hot || []).forEach(s => { SEC_BY_NAME[s.industry] = s; });
+  const yi = v => (v > 0 ? "+" : "") + (v / 1e8).toFixed(0) + "億";  // 元 → 億
+  // 輪動每列底下的籌碼/廣度子行;isOut=true 時偵測「漲停鎖量」誤判
+  function rotSub(chain, isOut) {
+    const s = SEC_BY_NAME[chain];
+    if (!s) return "";
+    const p = [];
+    p.push('<span class="' + cls(s.avg_change_pct) + '">漲跌 ' + fmtPct(s.avg_change_pct) + "</span>");
+    if (s.up_ratio != null) p.push("<span>上漲 " + (s.up_ratio * 100).toFixed(0) + "%</span>");
+    if (s.limit_up_count) p.push("<span>漲停 " + s.limit_up_count + "</span>");
+    if (s.inst_net_value != null && s.inst_net_value !== 0)
+      p.push('<span class="' + cls(s.inst_net_value) + '">法人 ' + yi(s.inst_net_value) + "</span>");
+    // 旗標:在「流出」欄,但價漲 + 多檔漲停鎖量 + 法人淨買 → 占比降很可能是鎖量而非真流出
+    let flag = "";
+    if (isOut && s.avg_change_pct > 0 && s.limit_up_count >= 3 && s.inst_net_value > 0)
+      flag = '<span class="rot-flag" title="股價大漲、多檔漲停鎖量使成交萎縮、且法人淨買 —— 成交占比下降很可能是漲停鎖量,而非資金真的流出">漲停鎖量?</span>';
+    return '<div class="rot-sub">' + p.join("") + flag + "</div>";
+  }
   function renderRotation() {
     const wrap = document.getElementById("rotation");
     const rel = rotRelCb.checked;
@@ -485,15 +511,17 @@ canvas { max-width: 100%; }
     const inflow = rows.filter(r => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 8);
     const outflow = rows.filter(r => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 8);
     const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.delta)));
-    const col = (title, list, cls) => '<div class="rot-col"><h4>' + title + "</h4>" +
+    const col = (title, list, cls, isOut) => '<div class="rot-col"><h4>' + title + "</h4>" +
       (list.length ? list.map(r =>
-        '<div class="rot-row"><span class="nm">' + r.chain + "</span>" +
+        '<div class="rot-item"><div class="rot-row"><span class="nm">' + r.chain + "</span>" +
         '<span class="bar"><i class="' + cls + '" style="width:' +
         (Math.abs(r.delta) / maxAbs * 100).toFixed(0) + '%"></i></span>' +
         '<span class="dv ' + cls + '">' + (r.delta > 0 ? "+" : "") + r.delta.toFixed(2) + unit + "</span>" +
-        '<span class="now">今日 ' + r.now.toFixed(1) + "%</span></div>").join("")
+        '<span class="now">今日 ' + r.now.toFixed(1) + "%</span></div>" +
+        rotSub(r.chain, isOut) + "</div>").join("")
         : '<div class="rot-empty">無</div>') + "</div>";
-    wrap.innerHTML = col("資金流入(占比上升)", inflow, "up") + col("資金流出(占比下降)", outflow, "down");
+    wrap.innerHTML = col("資金流入(占比上升)", inflow, "up", false)
+                   + col("資金流出(占比下降)", outflow, "down", true);
   }
   renderRotation();
   rotRelCb.addEventListener("change", renderRotation);

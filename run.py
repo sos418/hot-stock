@@ -193,7 +193,9 @@ def main():
             "turnover_share": round(float(r["turnover_share"]), 4),
             "turnover_share_ex": round(float(r["turnover_share_ex"]), 4),
             "limit_up_count": int(r["limit_up_count"]),
-            "new_high_count": int(r["new_high_count"])}
+            "new_high_count": int(r["new_high_count"]),
+            # 三大法人買賣超金額(元);供資金輪動疊圖辨別「漲停鎖量」vs 真流出
+            "inst_net_value": round(float(r["inst_net_value"]), 0)}
            for idx, r in sectors.iterrows()]
 
     # 跨日趨勢(Phase 2):各產業鏈近 N 交易日強勢股家數/成交占比;固定參考門檻
