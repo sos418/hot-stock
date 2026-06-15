@@ -85,8 +85,6 @@ canvas { max-width: 100%; }
 .rot-item { padding: 2px 0 6px; border-bottom: 1px solid #161c26; }
 .rot-item:last-child { border-bottom: 0; }
 .rot-sub { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--muted); margin: 2px 0 0 2px; }
-.rot-sub span.pos { color: var(--up); }
-.rot-sub span.neg { color: var(--down); }
 .rot-flag { background: #c9a227; color: #1a1a1a; font-weight: 700; border-radius: 4px; padding: 0 6px; font-size: 11px; cursor: help; }
 </style>
 </head>
@@ -471,6 +469,7 @@ canvas { max-width: 100%; }
 
   /* ---- 資金輪動:近 N 交易日成交占比變化(pp 或 相對%;占比含/排除權王)---- */
   const ROT_WIN = 5;
+  const LOCKUP_MIN_LIMIT_UPS = 3;  // 「漲停鎖量」旗標:流出族群至少幾檔漲停才算鎖量
   const rotRelCb = document.getElementById("rot-rel");
   // 以族群名索引 F2 熱度資料,供輪動疊上「法人買賣超 + 漲停/上漲廣度」
   const SEC_BY_NAME = {};
@@ -488,7 +487,7 @@ canvas { max-width: 100%; }
       p.push('<span class="' + cls(s.inst_net_value) + '">法人 ' + yi(s.inst_net_value) + "</span>");
     // 旗標:在「流出」欄,但價漲 + 多檔漲停鎖量 + 法人淨買 → 占比降很可能是鎖量而非真流出
     let flag = "";
-    if (isOut && s.avg_change_pct > 0 && s.limit_up_count >= 3 && s.inst_net_value > 0)
+    if (isOut && s.avg_change_pct > 0 && s.limit_up_count >= LOCKUP_MIN_LIMIT_UPS && s.inst_net_value > 0)
       flag = '<span class="rot-flag" title="股價大漲、多檔漲停鎖量使成交萎縮、且法人淨買 —— 成交占比下降很可能是漲停鎖量,而非資金真的流出">漲停鎖量?</span>';
     return '<div class="rot-sub">' + p.join("") + flag + "</div>";
   }
