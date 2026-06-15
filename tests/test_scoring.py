@@ -69,24 +69,49 @@ def test_aggregate_sectors_top_share():
     assert out.loc["G2", "top_share"] == pytest.approx(0.5)
 
 
+def test_aggregate_sectors_up_ratio_and_ex():
+    """up_ratio=上漲家數比例(廣度);turnover_share_ex=排除權王後占比。"""
+    rows = [
+        {"code": "A", "industry": "G1", "turnover": 600.0, "change_pct": 5.0},   # 權王、上漲
+        {"code": "B", "industry": "G1", "turnover": 200.0, "change_pct": -1.0},  # 下跌
+        {"code": "A", "industry": "G2", "turnover": 600.0, "change_pct": 5.0},
+        {"code": "C", "industry": "G2", "turnover": 200.0, "change_pct": 3.0},   # 上漲
+    ]
+    for r in rows:
+        r.update(name=r["code"], close=10.0, inst_net_value=0.0, market_cap=100.0)
+    out = scoring.aggregate_sectors(pd.DataFrame(rows), {}, market_turnover=1400.0,
+                                    exclude_code="A", market_turnover_ex=400.0)
+    assert out.loc["G1", "up_ratio"] == pytest.approx(0.5)   # A漲 B跌
+    assert out.loc["G2", "up_ratio"] == pytest.approx(1.0)   # A、C 皆漲
+    assert out.loc["G1", "turnover_share_ex"] == pytest.approx(0.5)  # 排除A:B200/400
+    assert out.loc["G2", "turnover_share_ex"] == pytest.approx(0.5)  # 排除A:C200/400
+
+
 def test_build_trends():
     days = [
-        {"date": "2026-06-11",
-         "stocks": [{"code": "A", "change_pct": 9.0}, {"code": "B", "change_pct": 1.0}],
-         "sectors": {"半導體": {"turnover_share": 0.30}}},
-        {"date": "2026-06-12",
-         "stocks": [{"code": "A", "change_pct": 9.0}, {"code": "B", "change_pct": 9.5}],
-         "sectors": {"半導體": {"turnover_share": 0.40}}},
+        {"date": "2026-06-11", "stocks": [
+            {"code": "A", "change_pct": 9.0, "turnover": 50.0},   # 權王、強勢
+            {"code": "B", "change_pct": 1.0, "turnover": 10.0},
+            {"code": "Z", "change_pct": 0.0, "turnover": 40.0}]},  # 鏈外
+        {"date": "2026-06-12", "stocks": [
+            {"code": "A", "change_pct": 9.0, "turnover": 50.0},
+            {"code": "B", "change_pct": 9.5, "turnover": 30.0},
+            {"code": "Z", "change_pct": 0.0, "turnover": 20.0}]},
     ]
-    cm = {"半導體": {"A", "B", "C"}}  # C 當天無成交資料 → 不計
+    cm = {"半導體": {"A", "B", "C"}}  # C 當天無成交 → 不計
     t = scoring.build_trends(days, cm, threshold=8.0)
     assert t["dates"] == ["2026-06-11", "2026-06-12"]
     assert t["chains"]["半導體"]["strong_count"] == [1, 2]
-    assert t["chains"]["半導體"]["turnover_share"] == [30.0, 40.0]
+    # 含權王:(A+B)/total → d1 60/100, d2 80/100
+    assert t["chains"]["半導體"]["turnover_share"] == [60.0, 80.0]
+    # 排除權王 A:B/(total-A) → d1 10/50=20%, d2 30/50=60%
+    assert t["chains"]["半導體"]["turnover_share_ex"] == [20.0, 60.0]
 
 
-def test_build_trends_missing_sector_share():
-    days = [{"date": "d1", "stocks": [{"code": "A", "change_pct": 9.0}], "sectors": {}}]
+def test_build_trends_ex_single_stock_is_none():
+    """全市場僅一檔(它就是權王)→ 排除後分母 0,turnover_share_ex 為 None。"""
+    days = [{"date": "d1", "stocks": [{"code": "A", "change_pct": 9.0, "turnover": 10.0}]}]
     t = scoring.build_trends(days, {"X": {"A"}}, threshold=8.0)
     assert t["chains"]["X"]["strong_count"] == [1]
-    assert t["chains"]["X"]["turnover_share"] == [None]  # 未入 F2 榜
+    assert t["chains"]["X"]["turnover_share"] == [100.0]
+    assert t["chains"]["X"]["turnover_share_ex"] == [None]

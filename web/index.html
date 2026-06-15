@@ -123,10 +123,14 @@ canvas { max-width: 100%; }
   </div>
 
   <h2>當下熱門族群 Top 10</h2>
-  <div class="meta" style="margin-bottom:8px">族群=產業價值鏈分類(個股可屬多個族群);成交占比分母為全市場成交金額。</div>
+  <div class="meta" style="margin-bottom:8px">族群=產業價值鏈分類(個股可屬多個族群);<b>上漲比例</b>=成員上漲家數占比(等權廣度,不受權值股主導);成交占比分母為全市場成交金額。</div>
+  <label style="display:inline-block;margin-bottom:10px;font-size:13px;cursor:pointer;color:var(--text)">
+    <input type="checkbox" id="ex-top"> 排除權王(<span id="ex-top-name">台積電</span>)占比
+    <span class="pending">— 同時影響成交占比、資金輪動、趨勢圖</span>
+  </label>
   <table id="hot-table">
     <thead><tr>
-      <th>族群</th><th>平均漲跌%</th><th>成交占比</th><th>漲停家數</th><th>創20日新高</th>
+      <th>族群</th><th>平均漲跌%</th><th>上漲比例</th><th>成交占比</th><th>漲停家數</th><th>創20日新高</th>
     </tr></thead>
     <tbody></tbody>
   </table>
@@ -135,7 +139,10 @@ canvas { max-width: 100%; }
   </div>
 
   <h2>資金輪動 <span style="font-size:14px;font-weight:400;color:var(--muted)">近 5 交易日成交占比變化</span></h2>
-  <div class="meta" style="margin-bottom:8px">比較各產業鏈成交占比的<b>變化</b>(pp=百分點):占比上升=資金流入、可能成為下一波主流;下降=資金撤離。這是 F2「今天錢在哪」的跨日延伸——看錢從哪流到哪。</div>
+  <div class="meta" style="margin-bottom:8px">比較各產業鏈成交占比的<b>變化</b>:占比上升=資金流入、可能成為下一波主流;下降=資金撤離。這是 F2「今天錢在哪」的跨日延伸——看錢從哪流到哪。</div>
+  <label style="display:inline-block;margin-bottom:10px;font-size:13px;cursor:pointer;color:var(--text)">
+    <input type="checkbox" id="rot-rel"> 用相對變化 %(占比翻倍計,放大剛起漲的小題材;預設用百分點 pp)
+  </label>
   <div id="rotation" class="rot-wrap"></div>
 
   <h2>今日強勢族群
@@ -237,35 +244,58 @@ canvas { max-width: 100%; }
       ? "台股–費半 20日相關係數:樣本不足"
       : "台股–費半 20日相關係數:" + D.indices.corr_twii_sox.toFixed(2);
 
-  /* ---- F2 熱度榜 Top 10 ---- */
-  document.querySelector("#hot-table tbody").innerHTML =
-    D.sectors_hot.slice(0, 10).map(s =>
-      "<tr><td>" + s.industry + "</td>" +
-      '<td class="' + cls(s.avg_change_pct) + '">' + fmtPct(s.avg_change_pct) + "</td>" +
-      "<td>" + (s.turnover_share * 100).toFixed(2) + "%</td>" +
-      "<td>" + s.limit_up_count + "</td><td>" + s.new_high_count + "</td></tr>").join("");
+  /* ---- 排除權王 全域開關:影響 F2 占比、橫條圖、資金輪動、趨勢圖 ---- */
+  let exTop = false;
+  const TOP = D.top_stock || {};
+  if (TOP.name) document.getElementById("ex-top-name").textContent = TOP.name;
+  // 族群占比存取器(含/排除權王);回傳 % 數值,缺值為 null
+  const shareOf = s => {
+    const v = exTop ? s.turnover_share_ex : s.turnover_share;
+    return v == null ? null : v * 100;
+  };
+  // 趨勢序列存取器(回傳該鏈的占比陣列,含/排除)
+  const trendShare = c => (exTop ? TRENDS[c].turnover_share_ex : TRENDS[c].turnover_share) || [];
 
-  /* ---- F2 全族群成交占比橫條圖 ---- */
-  const shareTop = D.sectors_hot.slice(0, 20);
-  new Chart(document.getElementById("share-chart"), {
-    type: "bar",
-    data: {
-      labels: shareTop.map(s => s.industry),
-      datasets: [{
-        label: "成交金額占比% (Top 20)",
-        data: shareTop.map(s => +(s.turnover_share * 100).toFixed(2)),
-        backgroundColor: "#4d9fec",
-      }],
-    },
-    options: {
-      indexAxis: "y", animation: false,
-      plugins: { legend: { labels: { color: "#9aa3b2" } } },
-      scales: {
-        x: { ticks: { color: "#9aa3b2" }, grid: { color: "#222b3a" } },
-        y: { ticks: { color: "#e8eaed", autoSkip: false }, grid: { display: false } },
+  /* ---- F2 熱度榜 Top 10 ---- */
+  function renderHot() {
+    document.querySelector("#hot-table tbody").innerHTML =
+      D.sectors_hot.slice(0, 10).map(s => {
+        const sh = shareOf(s);
+        return "<tr><td>" + s.industry + "</td>" +
+          '<td class="' + cls(s.avg_change_pct) + '">' + fmtPct(s.avg_change_pct) + "</td>" +
+          "<td>" + (s.up_ratio != null ? (s.up_ratio * 100).toFixed(0) + "%" : "—") + "</td>" +
+          "<td>" + (sh != null ? sh.toFixed(2) + "%" : "—") + "</td>" +
+          "<td>" + s.limit_up_count + "</td><td>" + s.new_high_count + "</td></tr>";
+      }).join("");
+  }
+
+  /* ---- F2 全族群成交占比橫條圖(Top 20)---- */
+  let shareChart;
+  function renderShareChart() {
+    const top = D.sectors_hot.slice().sort((a, b) => (shareOf(b) || 0) - (shareOf(a) || 0)).slice(0, 20);
+    if (shareChart) shareChart.destroy();
+    shareChart = new Chart(document.getElementById("share-chart"), {
+      type: "bar",
+      data: {
+        labels: top.map(s => s.industry),
+        datasets: [{
+          label: "成交金額占比% (Top 20" + (exTop ? ",排除" + (TOP.name || "權王") : "") + ")",
+          data: top.map(s => +((shareOf(s) || 0).toFixed(2))),
+          backgroundColor: "#4d9fec",
+        }],
       },
-    },
-  });
+      options: {
+        indexAxis: "y", animation: false,
+        plugins: { legend: { labels: { color: "#9aa3b2" } } },
+        scales: {
+          x: { ticks: { color: "#9aa3b2" }, grid: { color: "#222b3a" } },
+          y: { ticks: { color: "#e8eaed", autoSkip: false }, grid: { display: false } },
+        },
+      },
+    });
+  }
+  renderHot();
+  renderShareChart();
 
   /* ---- F3 今日強勢族群:門檻可動態輸入,產業鏈大傘 + 子族群層級於前端即時計算 ---- */
   const scoreBody = document.querySelector("#score-table tbody");
@@ -383,21 +413,22 @@ canvas { max-width: 100%; }
     });
   });
 
-  /* ---- 族群趨勢圖:近 N 交易日 強勢股家數 + 成交占比 ---- */
+  /* ---- 族群趨勢圖:近 N 交易日 強勢股家數 + 成交占比(占比含/排除權王)---- */
   const trendSel = document.getElementById("trend-select");
   const chainNames = Object.keys(TRENDS);
+  let drawTrendRef = null, currentChain = null;
   if (!chainNames.length || (D.trends.dates || []).length < 1) {
     trendSel.insertAdjacentHTML("afterend",
       '<div class="pending" style="padding:20px">趨勢資料累積中(每交易日盤後自動新增一天)</div>');
     trendSel.style.display = "none";
   } else {
-    // 依今日(最後一天)強勢股家數排序,預設選最熱的鏈
     const lastOf = c => { const a = TRENDS[c].strong_count; return a[a.length - 1] || 0; };
     chainNames.sort((a, b) => lastOf(b) - lastOf(a));
     trendSel.innerHTML = chainNames.map(c => '<option value="' + c + '">' + c + "</option>").join("");
 
     let trendChart;
-    function drawTrend(chain) {
+    drawTrendRef = function (chain) {
+      currentChain = chain;
       const t = TRENDS[chain];
       if (trendChart) trendChart.destroy();
       trendChart = new Chart(document.getElementById("trend-chart"), {
@@ -408,7 +439,8 @@ canvas { max-width: 100%; }
             { label: "強勢股家數 (>" + (D.trend_threshold || 8) + "%)", data: t.strong_count,
               borderColor: "#e54d42", backgroundColor: "#e54d42", yAxisID: "y",
               tension: 0.2, pointRadius: 2, spanGaps: true },
-            { label: "成交占比 %", data: t.turnover_share,
+            { label: "成交占比 %" + (exTop ? "(排除" + (TOP.name || "權王") + ")" : ""),
+              data: trendShare(chain),
               borderColor: "#4d9fec", backgroundColor: "#4d9fec", yAxisID: "y2",
               tension: 0.2, pointRadius: 2, spanGaps: true },
           ],
@@ -425,25 +457,31 @@ canvas { max-width: 100%; }
           },
         },
       });
-    }
-    drawTrend(chainNames[0]);
-    trendSel.addEventListener("change", () => drawTrend(trendSel.value));
+    };
+    drawTrendRef(chainNames[0]);
+    trendSel.addEventListener("change", () => drawTrendRef(trendSel.value));
   }
 
-  /* ---- 資金輪動:近 N 交易日成交占比變化(各產業鏈比較) ---- */
+  /* ---- 資金輪動:近 N 交易日成交占比變化(pp 或 相對%;占比含/排除權王)---- */
   const ROT_WIN = 5;
-  (function renderRotation() {
+  const rotRelCb = document.getElementById("rot-rel");
+  function renderRotation() {
     const wrap = document.getElementById("rotation");
+    const rel = rotRelCb.checked;
     const rows = [];
     for (const c in TRENDS) {
-      const ser = TRENDS[c].turnover_share.slice(-ROT_WIN).filter(x => x != null);
+      const ser = trendShare(c).slice(-ROT_WIN).filter(x => x != null);
       if (ser.length < 2) continue;
-      rows.push({ chain: c, now: ser[ser.length - 1], delta: +(ser[ser.length - 1] - ser[0]).toFixed(2) });
+      const first = ser[0], last = ser[ser.length - 1];
+      const delta = rel ? (first > 0 ? (last - first) / first * 100 : null) : (last - first);
+      if (delta == null) continue;
+      rows.push({ chain: c, now: last, delta: +delta.toFixed(2) });
     }
     if (!rows.length) {
       wrap.innerHTML = '<div class="rot-empty">輪動資料累積中(需至少 2 個交易日的占比)</div>';
       return;
     }
+    const unit = rel ? "%" : "pp";
     const inflow = rows.filter(r => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 8);
     const outflow = rows.filter(r => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 8);
     const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.delta)));
@@ -452,11 +490,22 @@ canvas { max-width: 100%; }
         '<div class="rot-row"><span class="nm">' + r.chain + "</span>" +
         '<span class="bar"><i class="' + cls + '" style="width:' +
         (Math.abs(r.delta) / maxAbs * 100).toFixed(0) + '%"></i></span>' +
-        '<span class="dv ' + cls + '">' + (r.delta > 0 ? "+" : "") + r.delta.toFixed(2) + "pp</span>" +
+        '<span class="dv ' + cls + '">' + (r.delta > 0 ? "+" : "") + r.delta.toFixed(2) + unit + "</span>" +
         '<span class="now">今日 ' + r.now.toFixed(1) + "%</span></div>").join("")
         : '<div class="rot-empty">無</div>') + "</div>";
     wrap.innerHTML = col("資金流入(占比上升)", inflow, "up") + col("資金流出(占比下降)", outflow, "down");
-  })();
+  }
+  renderRotation();
+  rotRelCb.addEventListener("change", renderRotation);
+
+  /* ---- 排除權王開關:重繪 F2 表、橫條圖、輪動、趨勢圖 ---- */
+  document.getElementById("ex-top").addEventListener("change", e => {
+    exTop = e.target.checked;
+    renderHot();
+    renderShareChart();
+    renderRotation();
+    if (drawTrendRef && currentChain) drawTrendRef(currentChain);
+  });
 })();
 </script>
 </body>

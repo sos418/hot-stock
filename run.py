@@ -151,10 +151,18 @@ def main():
     market_change = float((stocks["change_pct"].fillna(0) * stocks["turnover"]).sum()
                           / total_turnover) if total_turnover else 0.0
 
+    # 權王(全市場當日成交額最大個股,通常台積電):供「排除權王」占比
+    top_row = stocks.loc[stocks["turnover"].idxmax()] if not stocks.empty else None
+    top_code = str(top_row["code"]) if top_row is not None else None
+    top_name = str(top_row["name"]) if top_row is not None else None
+    market_turnover_ex = total_turnover - (float(top_row["turnover"]) if top_row is not None else 0.0)
+
     # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
     member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")
     sectors = scoring.aggregate_sectors(member_rows, prior_highs,
-                                        market_turnover=total_turnover)
+                                        market_turnover=total_turnover,
+                                        exclude_code=top_code,
+                                        market_turnover_ex=market_turnover_ex)
     sectors = sectors[(sectors["member_count"] >= MIN_GROUP_SIZE)
                       & (sectors["top_share"] <= MAX_TOP_SHARE)]
 
@@ -180,7 +188,9 @@ def main():
 
     hot = [{"industry": idx,
             "avg_change_pct": round(float(r["avg_change_pct"]), 2),
+            "up_ratio": round(float(r["up_ratio"]), 4),
             "turnover_share": round(float(r["turnover_share"]), 4),
+            "turnover_share_ex": round(float(r["turnover_share_ex"]), 4),
             "limit_up_count": int(r["limit_up_count"]),
             "new_high_count": int(r["new_high_count"])}
            for idx, r in sectors.iterrows()]
@@ -203,6 +213,7 @@ def main():
         "min_group_size": MIN_GROUP_SIZE,
         "trends": trends,
         "trend_threshold": args.strong_threshold,
+        "top_stock": {"code": top_code, "name": top_name},
     }
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     DATA_JS.write_text("window.DASHBOARD_DATA = "
