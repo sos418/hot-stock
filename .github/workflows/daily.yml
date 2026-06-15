@@ -7,9 +7,11 @@ on:
     - cron: "40 8 * * 1-5"
   workflow_dispatch: {}        # 允許在 Actions 頁面手動觸發(測試用)
 
-# 讓工作流程能 commit 回更新的快照與 data.js
+# contents: commit 回更新的快照與 data.js;actions: 更新後觸發 pages.yml 部署
+# (GITHUB_TOKEN 推的 commit 不會自動觸發其他 workflow,故需主動 dispatch)
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: daily-run
@@ -34,14 +36,19 @@ jobs:
       - name: 盤後執行 run.py(休市會自行略過、不寫檔)
         run: python run.py
 
-      - name: Commit 並推送更新
+      - name: Commit 並推送更新,並觸發部署
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/history web/data.js data/industry_chains.json
           if git diff --cached --quiet; then
-            echo "今日無更新(休市或資料未變),略過 commit"
+            echo "今日無更新(休市或資料未變),略過 commit 與部署"
           else
             git commit -m "data: 盤後更新 $(date +%F)"
             git push
+            # GITHUB_TOKEN 推送不會自動觸發 pages.yml(防遞迴),故主動 dispatch
+            gh workflow run pages.yml --ref main
+            echo "已觸發 GitHub Pages 部署"
           fi
