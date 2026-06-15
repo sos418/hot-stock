@@ -72,7 +72,7 @@ def fetch_with_fallback(history: list, refresh_industry: bool = False):
         if tpex.empty:
             raise fetchers.FetchError("上櫃行情", ValueError("empty"))
     except fetchers.FetchError as e:
-        tpex = pd.DataFrame(columns=["code", "name", "close", "high", "change_pct", "turnover"])
+        tpex = pd.DataFrame(columns=["code", "name", "close", "change_pct", "turnover"])
         stale.append(e.source)
     try:
         capital = fetchers.fetch_capital_map()
@@ -152,10 +152,11 @@ def main():
                           / total_turnover) if total_turnover else 0.0
 
     # 權王(全市場當日成交額最大個股,通常台積電):供「排除權王」占比
-    top_row = stocks.loc[stocks["turnover"].idxmax()] if not stocks.empty else None
-    top_code = str(top_row["code"]) if top_row is not None else None
-    top_name = str(top_row["name"]) if top_row is not None else None
-    market_turnover_ex = total_turnover - (float(top_row["turnover"]) if top_row is not None else 0.0)
+    # 此處 stocks 必非空(上方休市判定已 return),故無需防呆
+    top_row = stocks.loc[stocks["turnover"].idxmax()]
+    top_code = str(top_row["code"])
+    top_name = str(top_row["name"])
+    market_turnover_ex = total_turnover - float(top_row["turnover"])
 
     # 一檔多族群:explode 成 (個股, 族群) 列;占比分母=全市場;小族群不排名
     member_rows = stocks.merge(groups.rename(columns={"group": "industry"}), on="code")

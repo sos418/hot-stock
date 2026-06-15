@@ -91,7 +91,7 @@ def parse_tw_date(s):
     return None
 
 
-def _daily_df(rows, code_keys, name_keys, close_keys, change_keys, value_keys, high_keys, date_keys):
+def _daily_df(rows, code_keys, name_keys, close_keys, change_keys, value_keys, date_keys):
     out = []
     data_date = None
     for r in rows:
@@ -109,7 +109,6 @@ def _daily_df(rows, code_keys, name_keys, close_keys, change_keys, value_keys, h
             "code": code,
             "name": str(_pick(r, *name_keys) or "").strip(),
             "close": close,
-            "high": _num(_pick(r, *high_keys)),
             "change_pct": change_pct,
             "turnover": turnover,
         })
@@ -133,13 +132,13 @@ def _rwd_rows(payload) -> list:
 
 
 def fetch_twse_daily() -> pd.DataFrame:
-    """上市個股日成交。回傳 code,name,close,high,change_pct,turnover;attrs['date']=資料日期。"""
+    """上市個股日成交。回傳 code,name,close,change_pct,turnover;attrs['date']=資料日期。"""
     payload = _load(f"{TWSE_RWD}/afterTrading/STOCK_DAY_ALL?response=json",
                     "上市行情", "stock_day_all.json")
     rows = _rwd_rows(payload)
     return _daily_df(rows, ["Code", "證券代號"], ["Name", "證券名稱"],
                      ["ClosingPrice", "收盤價"], ["Change", "漲跌價差"],
-                     ["TradeValue", "成交金額"], ["HighestPrice", "最高價"], ["Date", "日期"])
+                     ["TradeValue", "成交金額"], ["Date", "日期"])
 
 
 def fetch_tpex_daily() -> pd.DataFrame:
@@ -147,8 +146,7 @@ def fetch_tpex_daily() -> pd.DataFrame:
     rows = _load(f"{TPEX}/tpex_mainboard_daily_close_quotes", "上櫃行情", "tpex_daily.json")
     return _daily_df(rows, ["SecuritiesCompanyCode", "代號"], ["CompanyName", "名稱"],
                      ["Close", "收盤"], ["Change", "漲跌"],
-                     ["TransactionAmount", "成交金額", "TradingAmount"],
-                     ["High", "最高"], ["Date", "日期"])
+                     ["TransactionAmount", "成交金額", "TradingAmount"], ["Date", "日期"])
 
 
 def fetch_capital_map() -> pd.DataFrame:
@@ -278,6 +276,10 @@ def _crawl_chain_groups() -> pd.DataFrame:
     # 鏈層級題材族群(整條鏈,如「半導體」「被動元件」):group == chain
     for chain_name, codes in chain_members.items():
         rows.extend({"code": c, "group": chain_name, "chain": chain_name} for c in codes)
+    # 健全性下限:正常約上萬列;遠低於此代表平台 HTML 改版、解析失效,
+    # 寧可拋錯走「沿用舊快取」而非用殘缺結果污染快取
+    if len(rows) < 500:
+        raise FetchError("產業分類", ValueError(f"解析結果過少({len(rows)} 列),疑似頁面改版"))
     return pd.DataFrame(rows).drop_duplicates()
 
 

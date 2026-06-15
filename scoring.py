@@ -129,7 +129,7 @@ def build_trends(days: list, chain_members: dict,
             strong.append(sum(1 for c in members
                               if cp.get(c) is not None and cp[c] > threshold))
             sec = sum(tn.get(c, 0.0) for c in members)
-            sec_ex = sum(tn.get(c, 0.0) for c in members if c != top)
+            sec_ex = sec - (tn.get(top, 0.0) if top in members else 0.0)  # 扣權王,免再掃一遍
             share.append(pct(sec, total_by_day[i]))
             share_ex.append(pct(sec_ex, totalex_by_day[i]))
         chains[chain] = {"strong_count": strong,
