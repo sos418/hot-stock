@@ -177,7 +177,8 @@ canvas { max-width: 100%; }
   </div>
 </div>
 
-<script src="data.js"></script>
+<!-- 加版本參數破壞快取:data.js 每日(及手動重跑)更新,避免瀏覽器沿用舊檔 -->
+<script>document.write('<scr' + 'ipt src="data.js?v=' + Date.now() + '"></scr' + 'ipt>');</script>
 <script>
 (function () {
   const D = window.DASHBOARD_DATA;
