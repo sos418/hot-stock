@@ -25,6 +25,8 @@ TPEX = "https://www.tpex.org.tw/openapi/v1"
 INDEX_SYMBOLS = {
     "^TWII": "台股加權", "^GSPC": "S&P 500", "^IXIC": "那斯達克", "^SOX": "費城半導體",
     "^N225": "日經225", "^KS11": "韓國KOSPI", "000001.SS": "上證指數", "^HSI": "恒生指數",
+    # 原物料看盤:西德州原油(WTI)、COMEX 黃金期貨——皆為近月期貨,近24h交易
+    "CL=F": "西德州原油", "GC=F": "黃金",
 }
 
 MOCK_DIR: Path | None = None
