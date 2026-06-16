@@ -86,6 +86,53 @@ canvas { max-width: 100%; }
 .rot-item:last-child { border-bottom: 0; }
 .rot-sub { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--muted); margin: 2px 0 0 2px; }
 .rot-flag { background: #c9a227; color: #1a1a1a; font-weight: 700; border-radius: 4px; padding: 0 6px; font-size: 11px; cursor: help; }
+
+/* ---- 手機(≤640px):縮緊版面、寬表格改卡片化堆疊 ---- */
+@media (max-width: 640px) {
+  body { padding: 12px 12px 48px; }
+  h1 { font-size: 19px; }
+  h2 { font-size: 16px; margin: 20px 0 10px; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 8px; }
+  .card .close { font-size: 18px; }
+  .panel { padding: 12px; }
+  .chain-arrow { display: none; }  /* 直排時水平箭頭方向錯亂,隱藏 */
+
+  /* 寬表格 → 每列一張卡,td 上下堆疊、左欄名右數值 */
+  #hot-table, #score-table { border: 0; background: transparent; display: block; width: 100%; }
+  #hot-table thead, #score-table thead { display: none; }
+  #hot-table tbody, #score-table tbody,
+  #hot-table tr, #score-table tr,
+  #hot-table td, #score-table td { display: block; }
+  #hot-table tr, #score-table tr.clickable {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 12px; margin-bottom: 8px;
+  }
+  #hot-table td, #score-table tr.clickable td {
+    display: block; overflow: hidden; padding: 3px 0; border: 0;
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  #hot-table td::before, #score-table tr.clickable td::before {
+    content: attr(data-label); float: left; color: var(--muted);
+    font-size: 12px; font-weight: 400;
+  }
+  /* 第一欄(族群/產業鏈名)當卡片標題,不加欄名標籤 */
+  #hot-table td:first-child, #score-table tr.clickable td:first-child {
+    display: block; font-weight: 700; font-size: 15px; text-align: left;
+    padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--line);
+  }
+  #hot-table td:first-child::before, #score-table tr.clickable td:first-child::before { content: none; }
+  /* display:block 的 ID 規則特異性高於 [hidden] 的 UA display:none,需明確壓回收合 */
+  #hot-table tr[hidden], #score-table tr[hidden] { display: none; }
+  /* 展開明細(子族群/個股):接在卡片下方整塊顯示 */
+  #score-table tr.detail-row { margin: -8px 0 8px; }
+  #score-table tr.detail-row td {
+    border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: 8px 12px;
+  }
+
+  /* 資金輪動:單欄滿版、縮欄寬 */
+  .rot-col { min-width: 0; flex-basis: 100%; }
+  .rot-row { grid-template-columns: minmax(0,1fr) 44px 58px 62px; gap: 6px; }
+}
 </style>
 </head>
 <body>
@@ -266,11 +313,11 @@ canvas { max-width: 100%; }
     document.querySelector("#hot-table tbody").innerHTML =
       D.sectors_hot.slice(0, 10).map(s => {
         const sh = shareOf(s);
-        return "<tr><td>" + s.industry + "</td>" +
-          '<td class="' + cls(s.avg_change_pct) + '">' + fmtPct(s.avg_change_pct) + "</td>" +
-          "<td>" + (s.up_ratio != null ? (s.up_ratio * 100).toFixed(0) + "%" : "—") + "</td>" +
-          "<td>" + (sh != null ? sh.toFixed(2) + "%" : "—") + "</td>" +
-          "<td>" + s.limit_up_count + "</td><td>" + s.new_high_count + "</td></tr>";
+        return '<tr><td data-label="族群">' + s.industry + "</td>" +
+          '<td data-label="平均漲跌%" class="' + cls(s.avg_change_pct) + '">' + fmtPct(s.avg_change_pct) + "</td>" +
+          '<td data-label="上漲比例">' + (s.up_ratio != null ? (s.up_ratio * 100).toFixed(0) + "%" : "—") + "</td>" +
+          '<td data-label="成交占比">' + (sh != null ? sh.toFixed(2) + "%" : "—") + "</td>" +
+          '<td data-label="漲停家數">' + s.limit_up_count + '</td><td data-label="創20日新高">' + s.new_high_count + "</td></tr>";
       }).join("");
   }
 
@@ -382,13 +429,13 @@ canvas { max-width: 100%; }
         : "";
       const detail = kids + "全鏈強勢個股:" + stocksLine(b.strong_stocks);
       const spark = TRENDS[b.industry] ? sparkline(TRENDS[b.industry].strong_count) : "";
-      return '<tr class="clickable" data-i="' + i + '"><td>' + b.industry +
+      return '<tr class="clickable" data-i="' + i + '"><td data-label="產業鏈">' + b.industry +
         (b.children && b.children.length ? ' <span class="pending">(' + b.children.length + ' 子群)</span>' : "") +
         "</td>" +
-        '<td class="score">' + b.strong_count + "</td>" +
-        "<td>" + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
-        "<td>" + b.member_count + "</td>" +
-        '<td style="text-align:right">' + spark + "</td></tr>" +
+        '<td data-label="強勢股家數" class="score">' + b.strong_count + "</td>" +
+        '<td data-label="強勢比例">' + (b.strong_ratio * 100).toFixed(0) + "%</td>" +
+        '<td data-label="族群家數">' + b.member_count + "</td>" +
+        '<td data-label="近20日家數" style="text-align:right">' + spark + "</td></tr>" +
         '<tr class="detail-row" data-d="' + i + '" hidden><td colspan="5">' + detail + "</td></tr>";
     }).join("");
   }
