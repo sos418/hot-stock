@@ -167,11 +167,6 @@ canvas { max-width: 100%; }
 <div id="content">
   <h2>國際大盤</h2>
   <div class="cards" id="index-cards"></div>
-  <div class="panel">
-    <div class="toggles" id="series-toggles"></div>
-    <canvas id="index-chart" height="90"></canvas>
-    <div class="meta" id="corr"></div>
-  </div>
 
   <h2>當下熱門族群 Top 10</h2>
   <div class="meta" style="margin-bottom:8px">族群=產業價值鏈分類(個股可屬多個族群);<b>上漲比例</b>=成員上漲家數占比(等權廣度,不受權值股主導);成交占比分母為全市場成交金額。</div>
@@ -232,9 +227,6 @@ canvas { max-width: 100%; }
       '<div class="empty">尚無資料,請先執行 python run.py</div>';
     return;
   }
-  const NAMES = { "^TWII": "台股加權", "^SOX": "費城半導體", "^GSPC": "S&P 500" };
-  const COLORS = { "^TWII": "#e54d42", "^SOX": "#4d9fec", "^GSPC": "#c9a227" };
-
   function fmtPct(v) {
     if (v === null || v === undefined) return "—";
     return (v > 0 ? "+" : "") + v.toFixed(2) + "%";
@@ -262,39 +254,6 @@ canvas { max-width: 100%; }
       '<span class="' + cls(c.d20_pct) + '">20日 ' + fmtPct(c.d20_pct) + "</span>" +
       "</div></div>";
   }).join("");
-
-  /* ---- F1 折線圖(基期=100,可勾選) ---- */
-  const chart = new Chart(document.getElementById("index-chart"), {
-    type: "line",
-    data: {
-      labels: D.indices.chart.labels,
-      datasets: Object.entries(D.indices.chart.series).map(([sym, vals]) => ({
-        label: NAMES[sym] || sym, data: vals, borderColor: COLORS[sym] || "#888",
-        borderWidth: 1.6, pointRadius: 0, tension: 0.2, _sym: sym,
-      })),
-    },
-    options: {
-      animation: false, interaction: { mode: "index", intersect: false },
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: "#9aa3b2", maxTicksLimit: 10 }, grid: { color: "#222b3a" } },
-        y: { ticks: { color: "#9aa3b2" }, grid: { color: "#222b3a" } },
-      },
-    },
-  });
-  document.getElementById("series-toggles").innerHTML =
-    chart.data.datasets.map((ds, i) =>
-      '<label style="color:' + ds.borderColor + '">' +
-      '<input type="checkbox" checked data-i="' + i + '"> ' + ds.label + "</label>").join("");
-  document.getElementById("series-toggles").addEventListener("change", e => {
-    const i = +e.target.dataset.i;
-    chart.setDatasetVisibility(i, e.target.checked);
-    chart.update();
-  });
-  document.getElementById("corr").textContent =
-    D.indices.corr_twii_sox === null
-      ? "台股–費半 20日相關係數:樣本不足"
-      : "台股–費半 20日相關係數:" + D.indices.corr_twii_sox.toFixed(2);
 
   /* ---- 排除權王 全域開關:影響 F2 占比、橫條圖、資金輪動、趨勢圖 ---- */
   let exTop = false;

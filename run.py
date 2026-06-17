@@ -19,7 +19,6 @@ HISTORY_DIR = ROOT / "data/history"
 MOCK_HISTORY_DIR = ROOT / "data/mock_history"
 DATA_JS = ROOT / "web/data.js"
 CHAIN_CACHE = ROOT / "data/industry_chains.json"
-CHART_SYMBOLS = ["^TWII", "^SOX", "^GSPC"]
 MIN_GROUP_SIZE = 3  # 當日有成交成員數低於此值的族群不進熱度榜/評分
 TREND_DAYS = 20     # 趨勢圖回看的交易日數
 MAX_TOP_SHARE = 0.60  # 龍頭個股成交額占族群比重高於此值視為單股獨大,不進榜(非族群輪動)
@@ -104,15 +103,7 @@ def render_indices(indices: dict) -> dict:
                           "change_pct": None, "d5_pct": None, "d20_pct": None})
             continue
         cards.append({"symbol": sym, "name": name, **scoring.index_stats(indices[sym])})
-
-    frame = pd.DataFrame({s: indices[s] for s in CHART_SYMBOLS if s in indices})
-    frame = frame.sort_index().ffill().dropna()
-    chart = {"labels": list(frame.index),
-             "series": {s: scoring.normalize_base100(frame[s]) for s in frame.columns}}
-    corr = None
-    if "^TWII" in indices and "^SOX" in indices:
-        corr = scoring.rolling_correlation(indices["^TWII"], indices["^SOX"], 20)
-    return {"cards": cards, "chart": chart, "corr_twii_sox": corr}
+    return {"cards": cards}
 
 
 def main():
