@@ -1,8 +1,10 @@
 """所有外部資料抓取;正規化為 DataFrame。mock 模式讀 data/mock/ 樣本。"""
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import html as html_lib
+import io
 import json
 import re
 import time
@@ -30,11 +32,22 @@ INDEX_SYMBOLS = {
 }
 
 MOCK_DIR: Path | None = None
+TARGET_DATE: dt.date | None = None  # 補抓指定日(如盤後當日漏抓);None=今日
 
 
 def set_mock(mock_dir):
     global MOCK_DIR
     MOCK_DIR = Path(mock_dir) if mock_dir else None
+
+
+def set_target_date(d):
+    """設定抓取目標日(影響需帶 date 參數的端點,如 T86);None 表示今日。"""
+    global TARGET_DATE
+    TARGET_DATE = d
+
+
+def _target_date() -> dt.date:
+    return TARGET_DATE or dt.date.today()
 
 
 class FetchError(Exception):
@@ -51,12 +64,34 @@ def _load(url: str, source: str, mock_file: str):
         try:
             resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
             resp.raise_for_status()
-            return resp.json()
+            try:
+                return resp.json()
+            except ValueError:
+                # 部分 TWSE rwd 端點改回傳 CSV(非 JSON);轉成 rwd-like dict 供 _rwd_rows 解析
+                parsed = _csv_to_rwd(resp.text)
+                if parsed is None:
+                    raise
+                return parsed
         except Exception as e:  # noqa: BLE001 - 重試後統一包裝為 FetchError
             last = e
             if attempt < RETRIES - 1:
                 time.sleep(RETRY_WAIT)
     raise FetchError(source, last)
+
+
+def _csv_to_rwd(text: str):
+    """TWSE CSV 回應 → rwd JSON 形狀 {stat, fields, data, date};非表格(如 HTML 錯誤頁)回 None。"""
+    rows = [r for r in csv.reader(io.StringIO(text)) if r]
+    if len(rows) < 2:
+        return None
+    header = [h.strip() for h in rows[0]]
+    if len(header) < 2:
+        return None
+    data = [r for r in rows[1:] if len(r) == len(header)]
+    if not data:
+        return None
+    date_idx = header.index("日期") if "日期" in header else 0
+    return {"stat": "OK", "fields": header, "data": data, "date": data[0][date_idx]}
 
 
 def _num(v):
@@ -178,7 +213,7 @@ def _inst_df(rows, code_keys, net_keys):
 
 def fetch_institutional() -> pd.DataFrame:
     """三大法人個股買賣超股數(上市 T86 + 上櫃)→ code, inst_net_shares。"""
-    date8 = dt.date.today().strftime("%Y%m%d")
+    date8 = _target_date().strftime("%Y%m%d")
     payload = _load(f"{TWSE_RWD}/fund/T86?response=json&date={date8}&selectType=ALL",
                     "三大法人(上市)", "t86.json")
     twse_rows = _rwd_rows(payload)

@@ -113,9 +113,13 @@ def main():
                     help="強制更新產業價值鏈分類快取")
     ap.add_argument("--strong-threshold", type=float, default=scoring.STRONG_THRESHOLD,
                     help=f"F3 強勢股漲幅門檻%%(預設 {scoring.STRONG_THRESHOLD};儀表板可再動態調整)")
+    ap.add_argument("--date", type=lambda s: dt.datetime.strptime(s, "%Y-%m-%d").date(),
+                    default=None, help="補抓指定日 YYYY-MM-DD(覆寫今日判定;需來源仍提供該日資料)")
     args = ap.parse_args()
     if args.mock:
         fetchers.set_mock(ROOT / "data/mock")
+    if args.date:
+        fetchers.set_target_date(args.date)
 
     history_dir = MOCK_HISTORY_DIR if args.mock else HISTORY_DIR
     history_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +132,9 @@ def main():
         print("今日休市/資料未更新(無上市行情資料)")
         sys.exit(0)
     data_date = twse.attrs.get("date")
-    today = data_date if (args.mock and data_date) else dt.date.today()
+    today = (args.date if args.date
+             else data_date if (args.mock and data_date)
+             else dt.date.today())
     if data_date and data_date != today:
         print(f"今日休市/資料未更新(資料日期 {data_date})")
         sys.exit(0)
